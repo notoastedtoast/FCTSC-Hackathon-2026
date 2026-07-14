@@ -2,8 +2,12 @@
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
+
+
+DEFAULT_DATABASE_PATH = Path.cwd() / "app.db"
 
 
 class ConfigurationError(RuntimeError):
@@ -14,6 +18,13 @@ class ConfigurationError(RuntimeError):
 class Settings:
     google_api_key: str
     google_model: str
+    database_path: str = str(DEFAULT_DATABASE_PATH)
+
+
+def load_database_path() -> str:
+    """Load the SQLite path without requiring analysis provider settings."""
+    load_dotenv()
+    return os.getenv("DATABASE_PATH") or str(DEFAULT_DATABASE_PATH)
 
 
 def load_settings() -> Settings:
@@ -35,4 +46,8 @@ def load_settings() -> Settings:
             "Set these values in .env or the environment."
         )
 
-    return Settings(google_api_key=api_key, google_model=model)
+    return Settings(
+        google_api_key=api_key,
+        google_model=model,
+        database_path=load_database_path(),
+    )
