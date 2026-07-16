@@ -72,7 +72,8 @@ handler specific to `/analyze`; it also handles path parameters.
 5. `classify_risk` merges model output with local signals. Local logic can only raise the
    risk, never lower it.
 6. Suspicious/dangerous results may invoke `CALMING_GUIDE`. Character failure is optional
-   here: the Detective result remains successful and `character_notice` is returned.
+   here: `CharacterError` and provider-adapter `ValueError` are isolated, so the Detective
+   result remains successful and `character_notice` is returned.
 7. The repository saves the submitted text and validated `ScamAnalysis`, and the route
    returns the random record ID.
 

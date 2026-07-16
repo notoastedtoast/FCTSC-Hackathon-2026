@@ -221,7 +221,7 @@ async def analyze(
             usage = character_reservation.usage
             try:
                 character_reply = await analyzer.respond(CALMING_GUIDE, detective)
-            except CharacterError:
+            except (CharacterError, ValueError):
                 await _complete_log(
                     repository,
                     character_reservation.call_id,

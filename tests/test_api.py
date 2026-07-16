@@ -5,7 +5,7 @@ import httpx
 from dotenv import load_dotenv
 import tests._logging  # noqa: F401
 
-from src.analyzer import AnalysisError, CharacterError, ScamAnalyzer
+from src.analyzer import AnalysisError, ScamAnalyzer
 from src.characters import CharacterSpec
 from src.config import Settings
 from src.database import AnalysisRepository, DatabaseError
@@ -286,7 +286,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
                 reasoning="The message requests an OTP.",
                 scenarios=scenario_assessments("credential_or_otp_theft"),
             ),
-            character_error=CharacterError("unavailable"),
+            character_error=ValueError("character response was invalid"),
         )
         app = create_app(analyzer=analyzer, repository=self.repository)
 

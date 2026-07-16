@@ -13,3 +13,6 @@ wheels/
 .venv
 
 app.db
+
+# testing
+frontend/
