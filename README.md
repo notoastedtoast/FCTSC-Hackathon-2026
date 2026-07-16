@@ -4,3 +4,9 @@ Hello moi nguoi, truoc khi push code vao branch "main" thi minh tao 1 brach moi 
 Một cái nữa là nếu muốn push code lên main brach thì bàn bạc với nhau phiên bản cuối nhé vì branch này sẽ là branch chứa source code
 của phiên bản stable nhất nhé.
 Chúc mọi người "vibe" code vui vẻ🫠
+<<<<<<< Updated upstream
+=======
+
+Run API tests: `make test`
+Run code: `make run`
+>>>>>>> Stashed changes
