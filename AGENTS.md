@@ -34,11 +34,9 @@ Run commands from the repository root.
 | Purpose | Command | Notes |
 | --- | --- | --- |
 | Install/sync | `uv sync` | Uses `pyproject.toml` and `uv.lock`. |
-| Deterministic tests | `uv run python -m unittest tests.test_api.ApiTests tests.test_analyzer.AnalyzerTests tests.test_database tests.test_evaluation` | Excludes credential-gated live Gemini tests. Run this during development. |
-| Full test discovery | `make test` | Runs every `test_*.py`. Live tests skip without Gemini credentials and run when credentials are available. |
+| Offline API tests | `make test-offline` | Runs the mocked API contract tests in `tests.test_api.ApiTests`. |
+| Online API tests | `make test-online` | Runs the credential-gated live Gemini API tests in `tests.test_api.LiveGeminiApiTests`. |
 | Run API and static UI | `make run` | Starts Uvicorn with reload. |
-| Labeled live evaluation | `make evaluate` | Makes provider calls for all cases in `evaluation/cases.json`; it is not a unit test. |
-| Live structured-output reliability | `make reliability` | Makes ten sequential provider calls and requires at least nine structured results. |
 | Strict type check | `pyright` | Configuration is in `pyrightconfig.json`; the executable must be installed separately. |
 | Patch hygiene | `git diff --check` | Run before handing off edits. |
 
@@ -189,32 +187,22 @@ legacy-schema test in `tests/test_database.py`.
 - `tests/test_database.py`: save/get behavior and migration of records created before the
   scenario/action/evidence columns. Chat has no database test because it adds no schema or
   repository method.
-- `tests/test_evaluation.py`: validates dataset size, unique IDs, label/channel coverage,
-  ambiguous accepted ranges, and prompt-injection labels.
 - `tests/factories.py`: canonical ordered scenario builders shared by API/analyzer/database
   tests. Use these instead of hand-building a partial scenario matrix.
 - `tests/_logging.py`: disables expected error logs during tests. Import it before code
   paths that intentionally exercise failures.
-- `evaluation/cases.json`: 38 labeled Vietnamese/English Detective cases, including
-  ambiguous and injection inputs. This is data for live evaluation, not runtime API data.
 
 ### Commands, UI, and repository metadata
 
-- `scripts/evaluate.py`: validates the labeled dataset, runs up to four Gemini analyses
-  concurrently, prints per-case expected/actual labels, and exits nonzero on any mismatch.
-- `scripts/reliability.py`: runs the first ten evaluation cases sequentially and requires
-  at least 9/10 non-fallback structured responses.
-- `scripts/__init__.py`: package marker for maintenance commands.
 - `frontend/index.html`: accessible static document structure and templates for analysis,
   scenario, character, lookup, and browser-local history sections.
 - `frontend/app.js`: API calls for health/analyze/get, result normalization/rendering, and
   browser `localStorage` analysis history. It intentionally has no character-chat UI.
 - `frontend/styles.css`: all static client styling and responsive rules.
 - `frontend/README.md`: frontend run and response-shape notes.
-- `README.md`: contributor overview, main commands, evaluation/reliability behavior, and
-  character-extension notes. Keep user-facing setup here; keep agent-level invariants in
-  this file.
-- `Makefile`: short wrappers for test, run, evaluation, and reliability commands.
+- `README.md`: contributor overview and main commands, plus character-extension notes.
+  Keep user-facing setup here; keep agent-level invariants in this file.
+- `Makefile`: short wrappers for offline API tests, online API tests, and running the app.
 - `pyproject.toml`: Python version, runtime dependencies, and package metadata.
 - `uv.lock`: reproducible dependency lock; update it through `uv`, never by hand.
 - `pyrightconfig.json`: strict checking for `src/` with the local `.venv`.
@@ -224,9 +212,10 @@ legacy-schema test in `tests/test_database.py`.
 
 ## Test expectations for future changes
 
-For backend changes, first run the deterministic command in the command table. Then run
-`make test`; be explicit in handoff notes when live tests ran, skipped, or failed because
-of provider behavior. Never claim live coverage from mocked tests.
+For backend changes, run `make test-offline` first. Run `make test-online` only when
+credentials/cost are appropriate, and be explicit in handoff notes when live tests ran,
+skipped, or failed because of provider behavior. Never claim live coverage from mocked
+tests.
 
 Character-chat changes must retain tests proving all of the following:
 

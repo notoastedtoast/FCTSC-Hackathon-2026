@@ -1,10 +1,10 @@
-.PHONY: test evaluate reliability run
+.PHONY: test-offline test-online run
 
-test:
-	uv run python -m unittest discover -s tests 
-evaluate:
-	uv run python -m scripts.evaluate
-reliability:
-	uv run python -m scripts.reliability
+test-offline:
+	.venv/bin/python -m unittest tests.test_api.ApiTests
+
+test-online:
+	.venv/bin/python -m unittest tests.test_api.LiveGeminiApiTests
+
 run:
-	uv run uvicorn src.main:app --reload
+	.venv/bin/uvicorn src.main:app --reload
