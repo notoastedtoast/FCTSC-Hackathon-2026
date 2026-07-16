@@ -12,7 +12,6 @@ from src.database import AnalysisRepository, DatabaseError
 from src.main import create_app
 from src.schemas import (
     AnalyzeRequest,
-    CharacterChatRequest,
     CharacterReply,
     DetectiveResult,
     SCAM_SCENARIOS,
@@ -32,7 +31,6 @@ class StubAnalyzer:
         self.error = error
         self.character_error = character_error
         self.requests: list[AnalyzeRequest] = []
-        self.chat_requests: list[CharacterChatRequest] = []
         self.detective_results: list[DetectiveResult] = []
         self.events: list[str] = []
         self.closed = False
@@ -49,12 +47,9 @@ class StubAnalyzer:
         self,
         character: CharacterSpec,
         detective: DetectiveResult,
-        chat: CharacterChatRequest | None = None,
     ) -> CharacterReply:
         self.events.append("character")
         self.detective_results.append(detective)
-        if chat is not None:
-            self.chat_requests.append(chat)
         if self.character_error is not None:
             raise self.character_error
         return CharacterReply(
@@ -85,6 +80,14 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.json(), {"status": "ok"})
         await analyzer.aclose()
         self.assertTrue(analyzer.closed)
+
+    async def test_character_chat_endpoint_is_not_exposed(self) -> None:
+        analyzer = StubAnalyzer()
+        app = create_app(analyzer=analyzer, repository=self.repository)
+
+        self.assertFalse(
+            any("/characters/" in path for path in app.openapi()["paths"])
+        )
 
     async def test_get_analysis_returns_stored_record_by_id(self) -> None:
         analyzer = StubAnalyzer(
@@ -184,7 +187,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
                 },
                 "character": {
                     "character_id": "calming-guide",
-                    "title": "Cô An",
+                    "title": "Cô tâm lý",
                     "message": "Cô hiểu sự thúc ép này dễ làm bác lo. Bác cứ chậm lại để nhìn rõ chiêu tạo áp lực.",
                 },
                 "character_notice": None,
@@ -297,165 +300,6 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(response.json()["character"])
         self.assertIn("bác", response.json()["character_notice"])
         self.assertEqual(analyzer.events, ["detective", "character"])
-
-    async def test_chat_with_character_uses_saved_analysis_and_audits_call(self) -> None:
-        analysis_id = await self.repository.save(
-            AnalyzeRequest(text="Send your OTP now", source="sms"),
-            ScamAnalysis(
-                confidence=0.8,
-                reasoning="The message requests an OTP.",
-                scenarios=scenario_assessments("credential_or_otp_theft"),
-            ),
-        )
-        analyzer = StubAnalyzer()
-        app = create_app(analyzer=analyzer, repository=self.repository)
-
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
-        ) as client:
-            response = await client.post(
-                f"/analyses/{analysis_id}/characters/calming-guide/chat",
-                json={"message": "Cô ơi, bây giờ bác nên làm gì?"},
-            )
-            history = await client.get("/session/ai-calls")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json(),
-            {
-                "character": {
-                    "character_id": "calming-guide",
-                    "title": "Cô An",
-                    "message": "Cô hiểu sự thúc ép này dễ làm bác lo. Bác cứ chậm lại để nhìn rõ chiêu tạo áp lực.",
-                },
-                "usage": {"used": 1, "limit": 10},
-            },
-        )
-        self.assertEqual(
-            analyzer.chat_requests,
-            [CharacterChatRequest(message="Cô ơi, bây giờ bác nên làm gì?")],
-        )
-        self.assertEqual(analyzer.events, ["character"])
-        self.assertFalse(hasattr(analyzer.detective_results[0], "text"))
-        self.assertEqual(history.json()["usage"], {"used": 1, "limit": 10})
-        self.assertEqual(history.json()["calls"][0]["kind"], "character")
-        self.assertEqual(
-            history.json()["calls"][0]["input_length"],
-            len("Cô ơi, bây giờ bác nên làm gì?"),
-        )
-        self.assertTrue(history.json()["calls"][0]["success"])
-        self.assertEqual(
-            history.json()["calls"][0]["summary"],
-            "Character chat call completed.",
-        )
-        self.assertNotIn("bây giờ", history.json()["calls"][0]["summary"])
-        self.assertNotIn("thúc ép", history.json()["calls"][0]["summary"])
-
-    async def test_character_chat_failure_is_502_and_audited(self) -> None:
-        analysis_id = await self.repository.save(
-            AnalyzeRequest(text="Send your OTP now"),
-            ScamAnalysis(
-                confidence=0.8,
-                reasoning="The message requests an OTP.",
-                scenarios=scenario_assessments("credential_or_otp_theft"),
-            ),
-        )
-        analyzer = StubAnalyzer(character_error=CharacterError("unavailable"))
-        app = create_app(analyzer=analyzer, repository=self.repository)
-
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
-        ) as client:
-            response = await client.post(
-                f"/analyses/{analysis_id}/characters/calming-guide/chat",
-                json={"message": "Bác nên làm gì?"},
-            )
-            history = await client.get("/session/ai-calls")
-
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(
-            response.json(),
-            {"detail": "Unable to complete character chat at this time"},
-        )
-        self.assertFalse(history.json()["calls"][0]["success"])
-
-    async def test_invalid_character_chat_targets_do_not_use_quota(self) -> None:
-        analysis_id = await self.repository.save(
-            AnalyzeRequest(text="Send your OTP now"),
-            ScamAnalysis(
-                confidence=0.8,
-                reasoning="The message requests an OTP.",
-                scenarios=scenario_assessments("credential_or_otp_theft"),
-            ),
-        )
-        analyzer = StubAnalyzer()
-        app = create_app(analyzer=analyzer, repository=self.repository)
-
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
-        ) as client:
-            invalid_message = await client.post(
-                f"/analyses/{analysis_id}/characters/calming-guide/chat",
-                json={"message": "   "},
-            )
-            unknown_character = await client.post(
-                f"/analyses/{analysis_id}/characters/unknown/chat",
-                json={"message": "Hello"},
-            )
-            unknown_analysis = await client.post(
-                f"/analyses/{'f' * 32}/characters/calming-guide/chat",
-                json={"message": "Hello"},
-            )
-            history = await client.get("/session/ai-calls")
-
-        self.assertEqual(invalid_message.status_code, 422)
-        self.assertEqual(
-            invalid_message.json(),
-            {
-                "detail": (
-                    "The submitted request is invalid. Check its fields and try again."
-                )
-            },
-        )
-        self.assertEqual(unknown_character.status_code, 404)
-        self.assertEqual(unknown_analysis.status_code, 404)
-        self.assertEqual(history.json()["usage"], {"used": 0, "limit": 10})
-        self.assertEqual(analyzer.events, [])
-
-    async def test_character_chat_respects_session_ai_call_limit(self) -> None:
-        analysis_id = await self.repository.save(
-            AnalyzeRequest(text="Send your OTP now"),
-            ScamAnalysis(
-                confidence=0.8,
-                reasoning="The message requests an OTP.",
-                scenarios=scenario_assessments("credential_or_otp_theft"),
-            ),
-        )
-        analyzer = StubAnalyzer()
-        settings = Settings(
-            google_api_key="test-key",
-            google_model="gemini-test",
-            ai_session_call_limit=1,
-        )
-        app = create_app(settings=settings, analyzer=analyzer, repository=self.repository)
-
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
-        ) as client:
-            first = await client.post(
-                f"/analyses/{analysis_id}/characters/calming-guide/chat",
-                json={"message": "First question"},
-            )
-            blocked = await client.post(
-                f"/analyses/{analysis_id}/characters/calming-guide/chat",
-                json={"message": "Second question"},
-            )
-
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(blocked.status_code, 429)
-        self.assertEqual(blocked.headers["x-ai-calls-used"], "1")
-        self.assertEqual(blocked.headers["x-ai-calls-limit"], "1")
-        self.assertEqual(analyzer.events, ["character"])
 
     async def test_analyze_converts_provider_failure_to_502(self) -> None:
         analyzer = StubAnalyzer(error=AnalysisError("provider unavailable"))

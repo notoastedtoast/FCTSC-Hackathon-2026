@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Kiểm tra dấu hiệu lừa đảo và tìm hiểu các kiểu lừa đảo phổ biến.">
+    <title>ScamCheck — Kiểm tra tin nhắn đáng ngờ</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="ScamCheck, về đầu trang">
+        <span class="brand-mark" aria-hidden="true">SC</span>
+        <span>ScamCheck</span>
+      </a>
+      <nav aria-label="Điều hướng chính">
+        <a href="#kiem-tra">Kiểm tra tin</a>
+        <a href="#thu-vien">Thư viện lừa đảo</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" id="kiem-tra" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Một phút dừng lại có thể tránh một lần mắc bẫy</p>
+          <h1 id="hero-title">Tin nhắn này có đáng tin không?</h1>
+          <p>
+            Dán nội dung cần kiểm tra. Thám tử sẽ đánh giá trước; nếu tin đáng ngờ hoặc
+            nguy hiểm, Cô tâm lý mới giải thích chiêu tác động đang được sử dụng.
+          </p>
+        </div>
+
+        <form class="analysis-form" id="analysis-form">
+          <label for="message">Nội dung tin nhắn</label>
+          <textarea
+            id="message"
+            name="message"
+            rows="7"
+            maxlength="10000"
+            required
+            placeholder="Ví dụ: Tài khoản của bác sẽ bị khóa, bấm vào đường dẫn này ngay..."
+          ></textarea>
+          <div class="form-row">
+            <label for="source">Nguồn tin</label>
+            <select id="source" name="source">
+              <option value="">Không rõ</option>
+              <option value="sms">SMS</option>
+              <option value="email">Email</option>
+              <option value="social">Mạng xã hội</option>
+              <option value="chat">Ứng dụng nhắn tin</option>
+            </select>
+            <button type="submit" id="analyze-button">Kiểm tra ngay</button>
+          </div>
+          <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="results" id="results" aria-labelledby="results-title" hidden>
+        <div class="section-heading">
+          <p class="eyebrow">Kết quả theo hai bước</p>
+          <h2 id="results-title">Đánh giá tin nhắn</h2>
+        </div>
+
+        <div class="result-grid">
+          <article class="result-card detective-card" aria-labelledby="detective-title">
+            <div class="result-card-heading">
+              <span class="step">01</span>
+              <div>
+                <p class="result-role">Phân tích trước</p>
+                <h3 id="detective-title">Thám tử</h3>
+              </div>
+              <span class="risk-badge" id="risk-badge"></span>
+            </div>
+            <p class="result-message" id="detective-reasoning"></p>
+            <div class="result-list-block">
+              <h4>Dấu hiệu cần chú ý</h4>
+              <ul id="detective-indicators"></ul>
+            </div>
+            <div class="result-list-block">
+              <h4>Việc nên làm</h4>
+              <ol id="detective-actions"></ol>
+            </div>
+          </article>
+
+          <article class="result-card psychology-card" aria-labelledby="psychology-title">
+            <div class="result-card-heading">
+              <span class="step">02</span>
+              <div>
+                <p class="result-role">Chỉ gọi sau khi Thám tử kết luận</p>
+                <h3 id="psychology-title">Cô tâm lý</h3>
+              </div>
+            </div>
+            <p class="result-message" id="psychology-message"></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="library" id="thu-vien" aria-labelledby="library-title">
+        <div class="section-heading library-heading">
+          <div>
+            <p class="eyebrow">Nhận diện trước khi gặp</p>
+            <h2 id="library-title">Thư viện kiểu lừa đảo</h2>
+          </div>
+          <p>Chọn một nhóm để lọc, rồi bấm vào thẻ để xem dấu hiệu và cách xử lý.</p>
+        </div>
+
+        <div class="filters" id="library-filters" aria-label="Lọc kiểu lừa đảo">
+          <button class="filter-button is-active" type="button" data-filter="all" aria-pressed="true">Tất cả</button>
+          <button class="filter-button" type="button" data-filter="bank" aria-pressed="false">Giả ngân hàng</button>
+          <button class="filter-button" type="button" data-filter="police" aria-pressed="false">Giả công an</button>
+          <button class="filter-button" type="button" data-filter="prize" aria-pressed="false">Trúng thưởng</button>
+          <button class="filter-button" type="button" data-filter="delivery" aria-pressed="false">Giả giao hàng</button>
+          <button class="filter-button" type="button" data-filter="other" aria-pressed="false">Nhóm khác</button>
+        </div>
+
+        <div class="library-grid" id="library-grid" aria-live="polite"></div>
+        <p class="library-status" id="library-status" role="status"></p>
+      </section>
+    </main>
+
+    <dialog class="detail-dialog" id="scam-dialog" aria-labelledby="dialog-title">
+      <button class="dialog-close" id="dialog-close" type="button" aria-label="Đóng chi tiết">×</button>
+      <p class="detail-group" id="dialog-group"></p>
+      <h2 id="dialog-title"></h2>
+      <p id="dialog-summary"></p>
+      <h3>Dấu hiệu thường gặp</h3>
+      <ul id="dialog-signs"></ul>
+      <h3>Bác nên làm gì?</h3>
+      <ul id="dialog-actions"></ul>
+    </dialog>
+
+    <footer>
+      <p>ScamCheck hỗ trợ nhận diện rủi ro; khi có nguy cơ mất tiền, hãy liên hệ tổ chức qua kênh chính thức.</p>
+    </footer>
+  </body>
+</html>

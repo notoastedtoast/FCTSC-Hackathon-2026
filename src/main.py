@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .analyzer import AnalysisError, CharacterError, ScamAnalyzer, classify_risk
-from .characters import CALMING_GUIDE, CHARACTERS, CharacterSpec
+from .characters import CALMING_GUIDE, CharacterSpec
 from .config import DEFAULT_AI_SESSION_CALL_LIMIT, Settings, load_database_path, load_settings
 from .database import AiCallReservation, AnalysisRepository, DatabaseError
 from .schemas import (
@@ -20,8 +20,6 @@ from .schemas import (
     AiCallUsage,
     AnalyzeRequest,
     AnalyzeResponse,
-    CharacterChatRequest,
-    CharacterChatResponse,
     CharacterReply,
     DetectiveResult,
     ScamAnalysis,
@@ -40,7 +38,6 @@ class Analyzer(Protocol):
         self,
         character: CharacterSpec,
         detective: DetectiveResult,
-        chat: CharacterChatRequest | None = None,
     ) -> CharacterReply: ...
 
     async def aclose(self) -> None: ...
@@ -232,7 +229,7 @@ async def analyze(
                     "Optional character call failed.",
                 )
                 character_notice = (
-                    "Cô An đang bận một chút, bác xem kết luận của Thám tử trước nhé."
+                    "Cô tâm lý đang bận một chút, bác xem kết luận của Thám tử trước nhé."
                 )
             else:
                 await _complete_log(
@@ -277,80 +274,6 @@ async def get_analysis(
             detail="Scam analysis not found",
         )
     return analysis
-
-
-@router.post(
-    "/analyses/{analysis_id}/characters/{character_id}/chat",
-    response_model=CharacterChatResponse,
-)
-async def chat_with_character(
-    payload: CharacterChatRequest,
-    analysis_id: Annotated[str, Path(pattern=r"^[0-9a-f]{32}$")],
-    character_id: Annotated[str, Path(pattern=r"^[a-z0-9-]{1,50}$")],
-    request: Request,
-    analyzer: Analyzer = Depends(get_analyzer),
-    repository: Repository = Depends(get_repository),
-) -> CharacterChatResponse:
-    character = CHARACTERS.get(character_id)
-    if character is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Character not found",
-        )
-
-    analysis = await _use_database(repository.get(analysis_id), "retrieve")
-    if analysis is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Scam analysis not found",
-        )
-
-    session_id = _session_id(request)
-    call_limit = cast(int, request.app.state.ai_session_call_limit)
-    reservation = await _use_database(
-        repository.reserve_ai_call(
-            session_id, "character", len(payload.message), call_limit
-        ),
-        "reserve",
-    )
-    if reservation is None:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=(
-                "This session has reached its AI call limit. Please review saved results "
-                "instead of sending another message."
-            ),
-            headers={
-                "X-AI-Calls-Used": str(call_limit),
-                "X-AI-Calls-Limit": str(call_limit),
-            },
-        )
-
-    detective = DetectiveResult(
-        **analysis.model_dump(exclude={"id", "text", "source", "created_at"}),
-        risk_level=classify_risk(analysis.text, analysis),
-    )
-    try:
-        reply = await analyzer.respond(character, detective, payload)
-    except CharacterError as exc:
-        await _complete_log(
-            repository,
-            reservation.call_id,
-            False,
-            "Character chat call failed.",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to complete character chat at this time",
-        ) from exc
-
-    await _complete_log(
-        repository,
-        reservation.call_id,
-        True,
-        "Character chat call completed.",
-    )
-    return CharacterChatResponse(character=reply, usage=reservation.usage)
 
 
 def create_app(

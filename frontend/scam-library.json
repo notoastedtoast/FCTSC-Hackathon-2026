@@ -1,0 +1,110 @@
+[
+  {
+    "id": "fake-bank",
+    "group": "bank",
+    "group_label": "Giả ngân hàng",
+    "title": "Mạo danh ngân hàng",
+    "summary": "Kẻ gian giả nhân viên ngân hàng hoặc tin nhắn thương hiệu để dọa khóa tài khoản và lấy thông tin đăng nhập.",
+    "signs": ["Thúc giục xác minh ngay", "Xin mật khẩu, mã OTP hoặc mã PIN", "Gửi đường dẫn có tên miền gần giống ngân hàng"],
+    "actions": ["Không cung cấp mã xác thực", "Tự gọi số trên thẻ hoặc mở ứng dụng ngân hàng chính thức"]
+  },
+  {
+    "id": "fake-police",
+    "group": "police",
+    "group_label": "Giả công an",
+    "title": "Mạo danh công an, tòa án",
+    "summary": "Kẻ gian dựng chuyện điều tra, lệnh bắt hoặc hồ sơ rửa tiền để làm nạn nhân sợ hãi và chuyển tiền.",
+    "signs": ["Đe dọa bắt giữ qua điện thoại", "Yêu cầu giữ bí mật", "Bắt chuyển tiền vào tài khoản kiểm tra"],
+    "actions": ["Dừng cuộc gọi", "Liên hệ cơ quan công an tại số hoặc địa chỉ công khai"]
+  },
+  {
+    "id": "fake-prize",
+    "group": "prize",
+    "group_label": "Trúng thưởng",
+    "title": "Trúng thưởng, nhận quà giả",
+    "summary": "Thông báo phần thưởng không đăng ký tham gia rồi yêu cầu đóng thuế, phí vận chuyển hoặc cung cấp dữ liệu cá nhân.",
+    "signs": ["Phần thưởng bất ngờ", "Phải nộp phí trước", "Chỉ cho thời gian nhận quà rất ngắn"],
+    "actions": ["Không trả bất kỳ khoản phí nào", "Kiểm tra chương trình trên trang chính thức"]
+  },
+  {
+    "id": "fake-delivery",
+    "group": "delivery",
+    "group_label": "Giả giao hàng",
+    "title": "Đơn hàng và phí giao hàng giả",
+    "summary": "Tin nhắn giả hãng vận chuyển báo sai địa chỉ hoặc thiếu phí nhỏ để dụ bấm liên kết và nhập thông tin thẻ.",
+    "signs": ["Không nêu đúng mã đơn", "Đòi phí giao lại", "Liên kết không thuộc hãng vận chuyển"],
+    "actions": ["Tra mã đơn trong ứng dụng đã mua hàng", "Không nhập thẻ từ liên kết trong SMS"]
+  },
+  {
+    "id": "malicious-link",
+    "group": "other",
+    "group_label": "Liên kết giả",
+    "title": "Đường dẫn và mã QR độc hại",
+    "summary": "Đường dẫn rút gọn, tên miền gần giống hoặc mã QR dẫn tới trang lấy cắp tài khoản và cài mã độc.",
+    "signs": ["Tên miền sai một ký tự", "Đường dẫn bị rút gọn", "Trang yêu cầu tải tệp hoặc cấp quyền lạ"],
+    "actions": ["Không mở đường dẫn đáng ngờ", "Tự gõ địa chỉ chính thức trong trình duyệt"]
+  },
+  {
+    "id": "family-impersonation",
+    "group": "other",
+    "group_label": "Mạo danh người thân",
+    "title": "Người thân gặp nạn",
+    "summary": "Tài khoản giả hoặc bị chiếm quyền nhắn rằng người thân đang cấp cứu, mất điện thoại hay cần tiền gấp.",
+    "signs": ["Số điện thoại hoặc tài khoản mới", "Không chịu gọi video", "Xin chuyển tiền khẩn cấp"],
+    "actions": ["Gọi lại số quen thuộc", "Hỏi một chi tiết riêng chỉ hai bên biết"]
+  },
+  {
+    "id": "credential-theft",
+    "group": "bank",
+    "group_label": "Giả ngân hàng",
+    "title": "Đánh cắp OTP và mật khẩu",
+    "summary": "Kẻ gian viện lý do hỗ trợ, hoàn tiền hoặc xác minh để lấy mã dùng một lần và chiếm tài khoản.",
+    "signs": ["Hỏi mã vừa gửi đến điện thoại", "Xin chia sẻ màn hình", "Hứa giúp xử lý giao dịch"],
+    "actions": ["Không đọc mã OTP cho bất kỳ ai", "Đổi mật khẩu từ thiết bị tin cậy nếu đã lộ"]
+  },
+  {
+    "id": "invoice-fraud",
+    "group": "other",
+    "group_label": "Thanh toán giả",
+    "title": "Hóa đơn và tài khoản nhận tiền giả",
+    "summary": "Email hoặc tin nhắn giả đối tác yêu cầu thanh toán hóa đơn vào số tài khoản vừa thay đổi.",
+    "signs": ["Thông tin nhận tiền đổi đột ngột", "Hối thanh toán ngoài quy trình", "Địa chỉ email gần giống đối tác"],
+    "actions": ["Xác nhận bằng kênh liên lạc cũ", "Yêu cầu người thứ hai kiểm tra thay đổi thanh toán"]
+  },
+  {
+    "id": "investment-scam",
+    "group": "other",
+    "group_label": "Đầu tư ảo",
+    "title": "Đầu tư và tiền số lợi nhuận cao",
+    "summary": "Nhóm đầu tư giả khoe lợi nhuận chắc chắn, tạo số dư ảo rồi yêu cầu nạp thêm tiền để rút vốn.",
+    "signs": ["Cam kết không thể thua", "Ép nạp thêm để mở khóa rút tiền", "Chuyển tiền số tới ví cá nhân"],
+    "actions": ["Không nạp thêm để gỡ vốn", "Kiểm tra giấy phép và cảnh báo từ cơ quan quản lý"]
+  },
+  {
+    "id": "romance-scam",
+    "group": "other",
+    "group_label": "Tình cảm giả",
+    "title": "Lừa đảo tình cảm",
+    "summary": "Đối tượng xây dựng quan hệ trực tuyến trong thời gian dài rồi liên tục tạo biến cố để xin tiền.",
+    "signs": ["Tránh gặp hoặc gọi video", "Câu chuyện khẩn cấp lặp lại", "Xin tiền vé máy bay, viện phí hoặc hải quan"],
+    "actions": ["Không chuyển tiền cho người chưa từng gặp", "Chia sẻ tình huống với người tin cậy"]
+  },
+  {
+    "id": "job-scam",
+    "group": "other",
+    "group_label": "Việc làm giả",
+    "title": "Việc nhẹ lương cao và nhiệm vụ online",
+    "summary": "Tin tuyển dụng hứa thu nhập bất thường, yêu cầu nạp tiền làm nhiệm vụ hoặc mua thiết bị từ nhà cung cấp chỉ định.",
+    "signs": ["Tuyển ngay không phỏng vấn", "Phải nộp phí để nhận việc", "Hoa hồng tăng nếu nạp thêm"],
+    "actions": ["Không trả tiền để được tuyển", "Xác minh vị trí trên website chính thức của công ty"]
+  },
+  {
+    "id": "fake-tech-support",
+    "group": "other",
+    "group_label": "Hỗ trợ kỹ thuật giả",
+    "title": "Hỗ trợ kỹ thuật và điều khiển từ xa",
+    "summary": "Cảnh báo virus giả hoặc cuộc gọi hỗ trợ dụ cài phần mềm điều khiển máy để xem dữ liệu và thực hiện giao dịch.",
+    "signs": ["Cửa sổ cảnh báo kèm số điện thoại", "Yêu cầu cài AnyDesk hoặc ứng dụng lạ", "Đòi đăng nhập ngân hàng khi đang chia sẻ màn hình"],
+    "actions": ["Ngắt mạng và gỡ quyền điều khiển", "Liên hệ đơn vị hỗ trợ qua trang chính thức"]
+  }
+]

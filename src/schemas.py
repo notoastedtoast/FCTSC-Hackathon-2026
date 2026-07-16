@@ -183,21 +183,6 @@ class CharacterReply(BaseModel):
     message: str = Field(min_length=1, max_length=400)
 
 
-class CharacterChatRequest(BaseModel):
-    message: str = Field(
-        min_length=1,
-        max_length=10_000,
-        description="Message to send to the character about a saved analysis",
-    )
-
-    @field_validator("message")
-    @classmethod
-    def message_must_not_be_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("message must not be blank")
-        return value
-
-
 class AiCallUsage(BaseModel):
     used: int = Field(ge=0)
     limit: int = Field(gt=0)
@@ -212,11 +197,6 @@ class AnalyzeResponse(BaseModel):
     detective: DetectiveResult
     character: CharacterReply | None = None
     character_notice: str | None = None
-    usage: AiCallUsage
-
-
-class CharacterChatResponse(BaseModel):
-    character: CharacterReply
     usage: AiCallUsage
 
 
