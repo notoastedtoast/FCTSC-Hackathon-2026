@@ -9,13 +9,7 @@ wheels/
 # API key
 .env
 
-# Local SQLite databases
-*.db
-*.db-shm
-*.db-wal
-
 # Virtual environments
 .venv
 
-# testing
-frontend/
+app.db

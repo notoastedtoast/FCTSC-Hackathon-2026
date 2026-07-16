@@ -1,4 +1,10 @@
-test:
-	uv run python -m unittest discover -s tests 
+.PHONY: test-offline test-online run
+
+test-offline:
+	.venv/bin/python -m unittest tests.test_api.ApiTests
+
+test-online:
+	.venv/bin/python -m unittest tests.test_api.LiveGeminiApiTests
+
 run:
-	uv run uvicorn src.main:app --reload
+	.venv/bin/uvicorn src.main:app --reload

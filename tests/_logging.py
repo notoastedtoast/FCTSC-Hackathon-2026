@@ -1,6 +1,7 @@
-"""Test-run logging configuration."""
+"""Reduce expected error-log noise during negative-path tests."""
 
 import logging
 
 
-logging.disable(logging.CRITICAL)
+for logger_name in ("src.main", "src.analyzer", "src.database"):
+    logging.getLogger(logger_name).setLevel(logging.CRITICAL)

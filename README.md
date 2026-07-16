@@ -5,5 +5,6 @@ Một cái nữa là nếu muốn push code lên main brach thì bàn bạc vớ
 của phiên bản stable nhất nhé.
 Chúc mọi người "vibe" code vui vẻ🫠
 
-Run API tests: `make test`
+Run API tests: `make test-offline`
+Run live API tests: `make test-online`
 Run code: `make run`

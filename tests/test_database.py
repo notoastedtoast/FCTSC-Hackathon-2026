@@ -4,30 +4,8 @@ import unittest
 import tests._logging  # noqa: F401
 
 from src.database import AnalysisRepository
-from src.schemas import (
-    AnalyzeRequest,
-    SCAM_SCENARIOS,
-    ScamAnalysis,
-    ScamScenarioAssessment,
-)
-
-
-def scenario_assessments(
-    detected_scenario: str | None = None,
-) -> list[ScamScenarioAssessment]:
-    return [
-        ScamScenarioAssessment(
-            scenario=scenario,
-            detected=scenario == detected_scenario,
-            confidence=0.9 if scenario == detected_scenario else 0.05,
-            evidence=(
-                "Có bằng chứng cụ thể."
-                if scenario == detected_scenario
-                else "Không có bằng chứng."
-            ),
-        )
-        for scenario in SCAM_SCENARIOS
-    ]
+from src.schemas import AnalyzeRequest, ScamAnalysis
+from tests.factories import scenario_assessments
 
 
 class AnalysisRepositoryTests(unittest.IsolatedAsyncioTestCase):
