@@ -101,8 +101,9 @@ analysis. The persistent top navigation uses `#analyze`, `#history`, and `#pract
 History is a dedicated page rather than a dialog; its “Kiểm tra lại” action copies a local
 message into the analysis composer without calling an API. New history entries store a
 bounded snapshot of the displayed risk, reasoning, evidence, actions, Cô tâm lý text, and
-online/offline mode. Review renders that snapshot with text nodes and never regenerates it;
-legacy message-only entries remain supported.
+online/offline mode. “Xem kết quả” converts that snapshot into the existing full result
+renderer without regenerating it; legacy message-only entries remain supported but clearly
+show that no result was saved.
 
 The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app.js`, and
 `/scamcheck-logo.png` after a successful online visit. When the browser reports that it is
@@ -387,10 +388,11 @@ shape changed.
 History review was then extended without changing the server contract. Each successful
 browser submission stores a bounded local snapshot of the result shown at that time:
 message, risk status, confidence, reasoning, up to four evidence items, three actions,
-Cô tâm lý text, and Gemini/offline mode. The History view expands this snapshot without an
-API call and keeps compatibility with older message-only entries. No result is regenerated,
-and the database schema, public response shapes, provider prompts, and offline rules did
-not change.
+Cô tâm lý text, and Gemini/offline mode. The History view reopens this snapshot in the
+existing full result screen without an API call, and keeps compatibility with older
+message-only entries. Legacy entries clearly show that no saved result is available and can
+still be rechecked. No result is regenerated, and the database schema, public response
+shapes, provider prompts, and offline rules did not change.
 
 ## Handoff checklist
 

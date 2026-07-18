@@ -2,11 +2,11 @@ const scanStage = document.getElementById("scan-stage");
 const scanMessage = document.getElementById("scan-message");
 const scanLayer = document.getElementById("scan-layer");
 const CHECK_COOLDOWN_MS=5000,MIN_LENGTH=10,MAX_LENGTH=10000;
-const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),processingFrame=document.getElementById('processing-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultBackButton=document.getElementById('result-back-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
+const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),processingFrame=document.getElementById('processing-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultBackButton=document.getElementById('result-back-button'),resultContextLabel=document.getElementById('result-context-label'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
 const cancelCheckButton=document.getElementById('cancel-check-button'),psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
 const practiceContent=document.getElementById('practice-content'),practiceMessage=document.getElementById('practice-message'),practiceProgress=document.getElementById('practice-progress'),practiceScore=document.getElementById('practice-score'),practiceAnswerButtons=document.querySelectorAll('.practice-answer-button'),practiceFeedback=document.getElementById('practice-feedback'),practiceNextButton=document.getElementById('practice-next-button');
 const navLinks=document.querySelectorAll('.nav-link[data-view]'),pageViews=document.querySelectorAll('[data-view-panel]');
-let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),activeCheckController=null,sessionAtLimit=false,isOffline=!navigator.onLine;
+let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),activeCheckController=null,sessionAtLimit=false,isOffline=!navigator.onLine,resultReturnView='analyze';
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
 const samples={bank:'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',delivery:'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',prize:'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.'};
 const practicePrompts=[
@@ -170,15 +170,18 @@ function createHistorySnapshot(payload){
   const actions=Array.isArray(detective.actions)
     ?detective.actions.slice(0,3).map(action=>String(action).slice(0,300))
     :[];
-  const characterMessage=payload?.character?.message||payload?.character_notice||'';
+  const characterMessage=payload?.character?.message||'';
+  const characterNotice=payload?.character_notice||'';
 
   return {
+    analysis_id:typeof payload?.id==='string'?payload.id.slice(0,32):null,
     risk_level:riskLevel,
     confidence,
     reasoning:String(detective.reasoning||'Không có phần giải thích được lưu.').slice(0,1000),
     indicator_evidence:evidence,
     actions,
     character_message:String(characterMessage).slice(0,400),
+    character_notice:String(characterNotice).slice(0,400),
     mode:payload?.offline||detective.analysis_mode==='offline'?'offline':'gemini'
   };
 }
@@ -199,15 +202,48 @@ function saveHistory(message,payload){
   if(viewFromHash()==='history')renderHistory();
 }
 
-function appendHistoryReviewSection(container,titleText,bodyText,className=''){
-  const section=document.createElement('section');
-  section.className=`history-review-section ${className}`.trim();
-  const title=document.createElement('h4');
-  title.textContent=titleText;
-  const body=document.createElement('p');
-  body.textContent=bodyText;
-  section.append(title,body);
-  container.appendChild(section);
+function historySnapshotToPayload(result){
+  const evidence=Array.isArray(result?.indicator_evidence)
+    ?result.indicator_evidence.slice(0,4).map(item=>({
+      label:String(item?.label||'Dấu hiệu đáng chú ý'),
+      excerpt:String(item?.excerpt||'')
+    })).filter(item=>item.excerpt)
+    :[];
+  const actions=Array.isArray(result?.actions)
+    ?result.actions.slice(0,3).map(action=>String(action))
+    :[];
+  const characterMessage=String(result?.character_message||'');
+  const characterNotice=String(result?.character_notice||'');
+
+  return {
+    offline:result?.mode==='offline',
+    saved_history:true,
+    detective:{
+      title:'Thám tử',
+      analysis_mode:result?.mode==='offline'?'offline':'online',
+      risk_level:['safe','suspicious','dangerous'].includes(result?.risk_level)
+        ?result.risk_level
+        :'suspicious',
+      confidence:Number.isFinite(result?.confidence)?result.confidence:0.5,
+      reasoning:String(result?.reasoning||'Không có phần giải thích được lưu.'),
+      indicator_evidence:evidence,
+      indicators:evidence.map(item=>item.label),
+      actions
+    },
+    character:characterMessage?{
+      character_id:'calming-guide',
+      title:'Cô tâm lý',
+      message:characterMessage
+    }:null,
+    character_notice:characterNotice||null
+  };
+}
+
+function showSavedHistoryResult(item){
+  if(!item.result||typeof item.result!=='object')return;
+  window.location.hash='analyze';
+  switchView('analyze');
+  showResultFrame(String(item.message||''),historySnapshotToPayload(item.result),{fromHistory:true});
 }
 
 function updateHistorySelectionUi(){
@@ -285,72 +321,20 @@ function renderHistory(){
     content.append(meta,message,time);
     row.append(checkbox,content);
 
-    const review=document.createElement('div');
-    review.className='history-result-review';
-    review.id=`history-review-${index}`;
-    review.hidden=true;
-    appendHistoryReviewSection(review,'Tin nhắn',String(item.message||''),'history-review-message');
-    if(result){
-      const confidence=Number.isFinite(result.confidence)
-        ?` Mức rủi ro ước lượng: ${Math.round(result.confidence*100)}%.`
-        :'';
-      appendHistoryReviewSection(review,'Kết quả phân tích',`${String(result.reasoning||'Không có phần giải thích được lưu.')}${confidence}`);
-
-      const evidence=Array.isArray(result.indicator_evidence)
-        ?result.indicator_evidence.slice(0,4)
-        :[];
-      if(evidence.length){
-        const evidenceSection=document.createElement('section');
-        evidenceSection.className='history-review-section';
-        const evidenceTitle=document.createElement('h4');
-        evidenceTitle.textContent='Dấu hiệu và bằng chứng';
-        const evidenceList=document.createElement('ul');
-        evidence.forEach(itemEvidence=>{
-          const listItem=document.createElement('li');
-          listItem.textContent=`${String(itemEvidence?.label||'Dấu hiệu')}: “${String(itemEvidence?.excerpt||'')}”`;
-          evidenceList.appendChild(listItem);
-        });
-        evidenceSection.append(evidenceTitle,evidenceList);
-        review.appendChild(evidenceSection);
-      }
-
-      const actions=Array.isArray(result.actions)?result.actions.slice(0,3):[];
-      if(actions.length){
-        const actionSection=document.createElement('section');
-        actionSection.className='history-review-section';
-        const actionTitle=document.createElement('h4');
-        actionTitle.textContent='Hành động được đề xuất';
-        const actionList=document.createElement('ol');
-        actions.forEach(action=>{
-          const listItem=document.createElement('li');
-          listItem.textContent=String(action);
-          actionList.appendChild(listItem);
-        });
-        actionSection.append(actionTitle,actionList);
-        review.appendChild(actionSection);
-      }
-
-      if(result.character_message){
-        appendHistoryReviewSection(review,'Cô tâm lý',String(result.character_message),'history-review-character');
-      }
-    }else{
-      appendHistoryReviewSection(review,'Kết quả phân tích','Mục lịch sử này được tạo trước khi ScamCheck hỗ trợ lưu kết quả. Bác có thể chọn “Kiểm tra lại” để tạo kết quả mới.','history-review-unavailable');
-    }
-
     const actions=document.createElement('div');
     actions.className='history-item-actions';
     const reviewButton=document.createElement('button');
     reviewButton.className='history-review-button';
     reviewButton.type='button';
-    reviewButton.textContent='Xem kết quả';
-    reviewButton.setAttribute('aria-expanded','false');
-    reviewButton.setAttribute('aria-controls',review.id);
-    reviewButton.addEventListener('click',()=>{
-      const expanded=reviewButton.getAttribute('aria-expanded')==='true';
-      reviewButton.setAttribute('aria-expanded',String(!expanded));
-      reviewButton.textContent=expanded?'Xem kết quả':'Ẩn kết quả';
-      review.hidden=expanded;
-    });
+    reviewButton.textContent=result?'Xem kết quả':'Kết quả chưa lưu';
+    reviewButton.disabled=!result;
+    if(result){
+      reviewButton.addEventListener('click',()=>showSavedHistoryResult(item));
+    }else{
+      const explanation='Mục lịch sử cũ này không có kết quả đã lưu. Hãy kiểm tra lại để tạo kết quả mới.';
+      reviewButton.title=explanation;
+      reviewButton.setAttribute('aria-label',explanation);
+    }
     const reuseButton=document.createElement('button');
     reuseButton.className='history-reuse-button';
     reuseButton.type='button';
@@ -361,12 +345,13 @@ function renderHistory(){
       processingFrame.classList.remove('active');
       resultFrame.classList.remove('active');
       inputFrame.style.display='block';
+      resultReturnView='analyze';
       window.location.hash='analyze';
       switchView('analyze');
       window.setTimeout(()=>messageInput.focus(),0);
     });
     actions.append(reviewButton,reuseButton);
-    article.append(row,review,actions);
+    article.append(row,actions);
     historyList.appendChild(article);
   });
 
@@ -694,9 +679,13 @@ function renderPsychology(payload){
   }
 }
 
-function showResultFrame(text,payload){
+function showResultFrame(text,payload,{fromHistory=false}={}){
   const detective=payload.detective;
   const risk=riskPresentations[detective.risk_level]||riskPresentations.suspicious;
+
+  resultReturnView=fromHistory?'history':'analyze';
+  resultContextLabel.textContent=fromHistory?'Kết quả đã lưu':'Phân tích hoàn tất';
+  resultBackButton.textContent=fromHistory?'Trở về lịch sử':'Kiểm tra tin khác';
 
   riskCard.className=`risk-card ${risk.className}`;
   riskLabel.textContent=payload.offline&&detective.risk_level==='safe'
@@ -827,6 +816,12 @@ cancelCheckButton.addEventListener('click',()=>{
 resultBackButton.addEventListener('click',()=>{
   resultFrame.classList.remove('active');
   inputFrame.style.display='block';
+  if(resultReturnView==='history'){
+    resultReturnView='analyze';
+    window.location.hash='history';
+    switchView('history',{focus:true});
+    return;
+  }
   updateInputState();
   window.scrollTo({top:0,behavior:'smooth'});
   messageInput.focus();

@@ -20,8 +20,10 @@ không gian làm việc hai cột trên máy tính và vẫn giữ giao diện m
 số đều chạy trong trình duyệt, không gọi API hay lưu vào máy chủ.
 
 Lịch sử trình duyệt giữ tối đa mười ảnh chụp kết quả gần nhất, gồm tin nhắn, mức rủi ro,
-lý do, bằng chứng, hành động đề xuất và phản hồi Cô tâm lý. Dữ liệu này chỉ phục vụ xem lại
-trên thiết bị hiện tại; mục cũ tạo trước tính năng này vẫn có thể được kiểm tra lại.
+lý do, bằng chứng, hành động đề xuất và phản hồi Cô tâm lý. Nút **Xem kết quả** mở lại màn
+hình kết quả đầy đủ mà không gọi AI lần nữa. Dữ liệu này chỉ phục vụ xem lại trên thiết bị
+hiện tại; mục cũ tạo trước tính năng này không có kết quả để khôi phục nhưng vẫn có thể
+được kiểm tra lại.
 
 Sau lần tải thành công đầu tiên, service worker lưu giao diện, CSS, JavaScript, bộ phân tích
 ngoại tuyến và logo. Khi mất mạng, tin nhắn được phân tích ngay trên thiết bị, không gửi đi,
