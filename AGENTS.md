@@ -59,7 +59,8 @@ contract below records behavior that is easy to miss from schemas alone.
 | `GET /` | None | `frontend/index.html` | Registered when the file exists; it does not expose other repository files. |
 | `GET /styles.css` | None | `frontend/styles.css` | Explicit stylesheet route; no directory mount or listing. |
 | `GET /app.js` | None | `frontend/app.js` | Explicit JavaScript route; no directory mount or listing. |
-| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the four authored shell assets for offline loading; it never intercepts API routes. |
+| `GET /offline-analyzer.js` | None | `frontend/offline-analyzer.js` | Conservative browser-only fallback used when the browser reports no connection. |
+| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the five authored shell assets for offline loading; it never intercepts API routes. |
 | `GET /scamcheck-logo.png` | None | `frontend/scamcheck-logo.png` | Explicit PNG route; the repository and other frontend files are never exposed as a static directory. |
 
 All FastAPI request-validation failures use the deliberately generic 422 detail:
@@ -85,8 +86,9 @@ handler specific to `/analyze`; it also handles path parameters.
 7. The repository saves the submitted text and validated `ScamAnalysis`, and the route
    returns the random record ID.
 
-The frontend makes one checking request to `/analyze` and renders the returned `detective`
-and `character`/`character_notice` in separate panels. It never calls Cô tâm lý directly.
+When online, the frontend makes one checking request to `/analyze` and renders the returned
+`detective` and `character`/`character_notice` in separate panels. It never calls Cô tâm lý
+directly.
 Provider evidence and raw submitted text are rendered with DOM text nodes, never as active
 links or HTML. The page also reads `/session/ai-calls` to display authoritative
 `used`/`limit` usage and disables submission after the session reaches its ceiling.
@@ -97,18 +99,22 @@ that caveat and refreshes usage. A successful submission is added to a ten-item
 localStorage history; deleting that browser-local copy does not delete the SQLite
 analysis.
 
-The service worker caches `/`, `/styles.css`, `/app.js`, and `/scamcheck-logo.png` after a
-successful online visit. When the browser reports that it is offline, the page disables
-AI submission and keeps the frontend-only recognition exercise available. API responses,
-submitted text, analysis results, and session usage are never added to the offline cache.
+The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app.js`, and
+`/scamcheck-logo.png` after a successful online visit. When the browser reports that it is
+offline, `offline-analyzer.js` performs a conservative rule-based assessment on the device
+and labels it as preliminary. It does not call Gemini, consume quota, write SQLite, or claim
+provider accuracy. API responses, submitted text, analysis results, and session usage are
+never added to the offline cache. A zero-signal offline result must still warn that it
+cannot establish safety.
 
 ### Catalog
 
 - The four required scam groups and twelve authored records live in
   `src/data/scam_types.json`; do not duplicate a client-side catalog.
 - `src/catalog.py` validates catalog data at import and owns filtering and detail lookup.
-- There is no local URL parser or deterministic keyword/domain checker. Link and message
-  risk assessment belongs to the provider-backed `/analyze` call.
+- Online link and message assessment belongs to the provider-backed `/analyze` call. The
+  browser's offline analyzer is a deliberately limited fallback and must not alter online
+  provider results.
 
 ### Frontend recognition exercise
 
@@ -171,7 +177,7 @@ legacy-schema test in `tests/test_database.py`.
 
 - `src/main.py`: FastAPI composition, lifespan, dependency protocols, cookie middleware,
   global validation handler, AI-call audit orchestration, HTTP routes, error translation,
-  and the five explicit frontend asset routes. Keep provider logic out of routes and SQLite
+  and the six explicit frontend asset routes. Keep provider logic out of routes and SQLite
   details out of this file.
 - `src/schemas.py`: public Pydantic request/response models, constrained IDs and text,
   catalog contracts, twelve ordered scam scenario codes, default actions, and model-level
@@ -211,8 +217,8 @@ legacy-schema test in `tests/test_database.py`.
 - `tests/labeled_messages.json`: 24 deterministic safe, suspicious, and dangerous
   messages, including the four named library groups and prompt-injection attempts.
 - `tests/test_frontend.py`: validates that the root page calls the analysis and usage
-  APIs; renders Detective/Cô tâm lý separately; keeps the balanced practice dataset and
-  grading in the browser; and no longer runs a local analyzer risk classifier.
+  APIs online; renders Detective/Cô tâm lý separately; keeps the balanced practice dataset
+  and grading in the browser; and wires the explicitly preliminary offline analyzer.
 - `tests/factories.py`: canonical ordered scenario builders shared by API/analyzer/database
   tests. Use these instead of hand-building a partial scenario matrix.
 - `tests/_logging.py`: disables expected error logs during tests. Import it before code
@@ -221,17 +227,20 @@ legacy-schema test in `tests/test_database.py`.
 ### Commands, UI, and repository metadata
 
 - `frontend/index.html`: accessible mobile UI, connectivity notice, and
-  recognition-exercise structure, with references to the three explicit frontend assets.
+  recognition-exercise structure, with references to the browser assets.
 - `frontend/styles.css`: mobile-first page styling, the automatic 900px+ widescreen
   layout, responsive rules, and reduced-motion behavior.
 - `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
   handling, safe result rendering,
   voice input, cancellation, browser-local recent-message history, and the local
   recognition prompts/grading/score. It registers the offline shell service worker and
-  disables AI submission while the browser is offline. It contains no local analyzer risk
-  parser, direct character call, or chat UI.
+  routes offline submissions through the local analyzer. It contains no direct character
+  API call or chat UI.
+- `frontend/offline-analyzer.js`: conservative, browser-only rules that return a compatible
+  preliminary risk result without network, quota, cookie, or database access. It is not
+  used to override a Gemini result.
 - `frontend/service-worker.js`: versioned cache for the root page, stylesheet, browser
-  script, and logo only. It does not intercept or cache API requests or user data.
+  scripts, and logo only. It does not intercept or cache API requests or user data.
 - `frontend/scamcheck-logo.png`: the only standalone visual asset used by the page.
 - `README.md`: contributor overview and main commands. Keep user-facing setup here; keep
   agent-level invariants in this file.
@@ -352,11 +361,12 @@ catalog helpers, backend sample data, and API tests were removed. The exercise m
 network, Gemini, SQLite, cookie, or localStorage call. The analysis API, database schema,
 and provider prompts did not change.
 
-The offline continuation then added a narrowly scoped service worker for the root page,
-stylesheet, browser script, and logo. The browser reports offline state, disables Gemini
-analysis, and keeps the existing local recognition exercise usable. No API response or
-submitted text is cached; the database schema, public response shapes, and provider
-prompts did not change.
+The offline continuation first added a narrowly scoped service worker, then was clarified
+by the user to require actual message analysis without connectivity. The browser now uses
+a conservative local rules engine only while offline and clearly labels its output as
+preliminary; online analysis remains provider-backed and authoritative. No API response or
+submitted text is cached, and offline results do not consume quota or reach SQLite. The
+database schema, public response shapes, and provider prompts did not change.
 
 ## Handoff checklist
 

@@ -9,15 +9,17 @@ gửi nội dung đến `/analyze`, rồi hiển thị kết quả từ Gemini v
 trần của phiên. Mặc định mỗi phiên có tối đa 10 lượt gọi; Thám tử và Cô tâm lý mỗi người
 tính một lượt. Có thể cấu hình trần bằng `AI_SESSION_CALL_LIMIT`. Mỗi lượt Thám tử có thời
 gian chờ tối đa 12 giây và lượt Cô tâm lý tối đa 6 giây. Khi hết lượt, backend trả thông
-báo lịch sự mà không gọi Gemini thêm. Không có bộ phân loại từ khóa hay trình phân tích
-đường dẫn cục bộ; tin nhắn và bằng chứng được hiển thị dưới dạng văn bản, không tự động mở
-liên kết. Bố cục tự chuyển sang chế độ màn hình rộng trên máy tính và vẫn giữ giao diện một
+báo lịch sự mà không gọi Gemini thêm. Khi mất mạng, một bộ quy tắc bảo thủ chạy hoàn toàn
+trong trình duyệt để đưa ra đánh giá sơ bộ và không thay thế kết quả Gemini. Tin nhắn và
+bằng chứng được hiển thị dưới dạng văn bản, không tự động mở liên kết. Bố cục tự chuyển sang
+chế độ màn hình rộng trên máy tính và vẫn giữ giao diện một
 cột trên thiết bị di động. Bài luyện nhận biết gồm mười câu, đáp án, lời giải thích và điểm
 số đều chạy trong trình duyệt, không gọi API hay lưu vào máy chủ.
 
-Sau lần tải thành công đầu tiên, service worker lưu riêng giao diện, CSS, JavaScript và logo
-để trang cùng bài luyện nhận biết vẫn mở được khi mất mạng. Chế độ ngoại tuyến không phân
-tích tin nhắn và không lưu tạm yêu cầu AI; nút kiểm tra sẽ bật lại khi trình duyệt có kết nối.
+Sau lần tải thành công đầu tiên, service worker lưu giao diện, CSS, JavaScript, bộ phân tích
+ngoại tuyến và logo. Khi mất mạng, tin nhắn được phân tích ngay trên thiết bị, không gửi đi,
+không dùng lượt AI và không ghi SQLite. Kết quả luôn được ghi rõ là đánh giá sơ bộ ngoại
+tuyến; khi có mạng, luồng kiểm tra tiếp tục dùng Gemini như bình thường.
 
 ## Chạy dự án
 

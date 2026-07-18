@@ -12,11 +12,15 @@ class FrontendTests(unittest.TestCase):
         page = (frontend / "index.html").read_text(encoding="utf-8")
         styles = (frontend / "styles.css").read_text(encoding="utf-8")
         script = (frontend / "app.js").read_text(encoding="utf-8")
+        offline_analyzer = (frontend / "offline-analyzer.js").read_text(
+            encoding="utf-8"
+        )
         service_worker = (frontend / "service-worker.js").read_text(encoding="utf-8")
 
         self.assertTrue((frontend / "scamcheck-logo.png").is_file())
         self.assertIn('href="./styles.css"', page)
         self.assertIn('src="./app.js"', page)
+        self.assertIn('src="./offline-analyzer.js"', page)
         self.assertNotIn("<style>", page)
         self.assertNotIn("<script>", page)
         self.assertIn(":root", styles)
@@ -48,8 +52,12 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("navigator.serviceWorker.register('/service-worker.js')", script)
         self.assertIn("window.addEventListener('offline',updateConnectivityState)", script)
         self.assertIn("window.addEventListener('online',updateConnectivityState)", script)
-        self.assertIn("sessionAtLimit||isOffline", script)
-        self.assertIn('const APP_SHELL=["/","/styles.css","/app.js","/scamcheck-logo.png"]', service_worker)
+        self.assertIn("(!isOffline&&sessionAtLimit)", script)
+        self.assertIn("ScamCheckOffline.analyze(submittedText)", script)
+        self.assertIn("analysis_mode==='offline'", script)
+        self.assertIn("const ScamCheckOffline", offline_analyzer)
+        self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
+        self.assertIn('"/offline-analyzer.js"', service_worker)
         self.assertNotIn("/analyze", service_worker)
         self.assertNotIn("/session/ai-calls", service_worker)
 

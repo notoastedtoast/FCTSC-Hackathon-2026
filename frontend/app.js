@@ -100,7 +100,7 @@ function updateUsage(aiUsage){
     :`Phiên này đã dùng ${aiUsage.used}/${aiUsage.limit} lượt gọi AI.`;
   updateInputState();
 }
-function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;clearButton.disabled=rawLength===0;checkButton.disabled=Boolean(activeCheckController)||sessionAtLimit||isOffline||!(clean.length>=MIN_LENGTH&&!isCooldownActive());if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{if(!isCooldownActive())hideFeedback();messageInput.removeAttribute('aria-invalid')}}
+function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;clearButton.disabled=rawLength===0;checkButton.disabled=Boolean(activeCheckController)||(!isOffline&&sessionAtLimit)||!(clean.length>=MIN_LENGTH&&!isCooldownActive());if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{if(!isCooldownActive())hideFeedback();messageInput.removeAttribute('aria-invalid')}}
 function setupSpeechRecognition(){const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Bạn vẫn có thể nhập hoặc dán nội dung.';return}recognition=new SpeechRecognition();recognition.lang='vi-VN';recognition.interimResults=true;recognition.continuous=true;let finalTranscript='';recognition.onstart=()=>{isRecording=true;finalTranscript='';voiceButton.classList.add('recording');voiceButtonLabel.textContent='Tắt micro';voiceStatus.textContent='Đang ghi âm… Hãy đọc rõ nội dung tin nhắn.'};recognition.onresult=(event)=>{let interimTranscript='';for(let i=event.resultIndex;i<event.results.length;i++){const transcript=event.results[i][0].transcript;if(event.results[i].isFinal)finalTranscript+=transcript+' ';else interimTranscript+=transcript}const combined=`${finalTranscript}${interimTranscript}`.trim();if(combined){const base=messageInput.dataset.beforeVoice||'';messageInput.value=base?`${base} ${combined}`:combined;messageInput.dispatchEvent(new Event('input'))}};recognition.onerror=(event)=>{isRecording=false;voiceButton.classList.remove('recording');voiceButtonLabel.textContent='Bật micro';if(event.error==='not-allowed'||event.error==='service-not-allowed')voiceStatus.textContent='Không thể dùng micro vì quyền truy cập đã bị từ chối. Bạn vẫn có thể nhập nội dung bằng bàn phím.';else if(event.error==='no-speech')voiceStatus.textContent='Chưa nhận được giọng nói. Vui lòng thử lại và nói gần micro hơn.';else voiceStatus.textContent='Tính năng giọng nói tạm thời chưa hoạt động. Vui lòng nhập nội dung thủ công.'};recognition.onend=()=>{isRecording=false;voiceButton.classList.remove('recording');voiceButtonLabel.textContent='Bật micro';if(!voiceStatus.textContent.includes('từ chối')&&!voiceStatus.textContent.includes('tạm thời')&&!voiceStatus.textContent.includes('Chưa nhận'))voiceStatus.textContent='Đã dừng ghi âm.';delete messageInput.dataset.beforeVoice}}
 function getHistory(){
   try{
@@ -322,7 +322,7 @@ async function loadUsage(){
     updateUsage(payload.usage);
   }catch(error){
     if(isOffline){
-      usage.textContent='Đang ngoại tuyến. Số lượt AI sẽ được cập nhật khi có kết nối.';
+      usage.textContent='Đang ngoại tuyến. Phân tích sơ bộ trên thiết bị không dùng lượt AI.';
       return;
     }
     updateUsage(null);
@@ -333,7 +333,7 @@ function updateConnectivityState(){
   isOffline=!navigator.onLine;
   connectivityStatus.hidden=!isOffline;
   if(isOffline){
-    usage.textContent='Đang ngoại tuyến. Số lượt AI sẽ được cập nhật khi có kết nối.';
+    usage.textContent='Đang ngoại tuyến. Phân tích sơ bộ trên thiết bị không dùng lượt AI.';
   }else{
     usage.textContent='Đang tải số lượt gọi AI của phiên này…';
     void loadUsage();
@@ -482,10 +482,12 @@ function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=nul
 function renderSignals(detective){
   signalList.replaceChildren();
   appendSignalCard(
-    'Nhận định của Thám tử',
+    detective.analysis_mode==='offline'?'Nhận định ngoại tuyến':'Nhận định của Thám tử',
     detective.reasoning,
     null,
-    `Khả năng lừa đảo: ${Math.round(detective.confidence*100)}%`
+    detective.analysis_mode==='offline'
+      ?`Ước lượng rủi ro sơ bộ: ${Math.round(detective.confidence*100)}%`
+      :`Khả năng lừa đảo: ${Math.round(detective.confidence*100)}%`
   );
 
   const evidence=Array.isArray(detective.indicator_evidence)
@@ -538,8 +540,12 @@ function showResultFrame(text,payload){
   const risk=riskPresentations[detective.risk_level]||riskPresentations.suspicious;
 
   riskCard.className=`risk-card ${risk.className}`;
-  riskLabel.textContent=risk.label;
-  riskDescription.textContent=risk.description;
+  riskLabel.textContent=payload.offline&&detective.risk_level==='safe'
+    ?'Chưa thấy dấu hiệu'
+    :risk.label;
+  riskDescription.textContent=payload.offline
+    ?`Đánh giá sơ bộ ngoại tuyến. ${risk.description}`
+    :risk.description;
 
   renderSignals(detective);
   const excerpts=(detective.indicator_evidence||[]).map(item=>item.excerpt);
@@ -588,10 +594,6 @@ document.addEventListener('keydown',event=>{
 });
 checkButton.addEventListener('click',async()=>{
   const clean=normalizedValue();
-  if(isOffline){
-    showFeedback('Kiểm tra bằng AI cần kết nối mạng. Bác vẫn có thể dùng bài luyện nhận biết bên dưới.','info');
-    return;
-  }
   if(isCooldownActive()){
     updateCooldownState();
     return;
@@ -619,18 +621,28 @@ checkButton.addEventListener('click',async()=>{
   processingFrame.classList.add('active');
 
   try{
-    const payload=await requestJson("/analyze",{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text:submittedText,source:'web'}),
-      signal:controller.signal
-    });
+    let payload;
+    if(isOffline){
+      payload=ScamCheckOffline.analyze(submittedText);
+    }else{
+      try{
+        payload=await requestJson("/analyze",{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({text:submittedText,source:'web'}),
+          signal:controller.signal
+        });
+      }catch(error){
+        if(error.name==='AbortError'||Number.isInteger(error.status))throw error;
+        payload=ScamCheckOffline.analyze(submittedText);
+      }
+    }
     if(activeCheckController!==controller)return;
     stopScanAnimation();
     saveHistory(submittedText);
     lastCheckAt=Date.now();
     sessionStorage.setItem('scamcheck-last-check-at',String(lastCheckAt));
-    updateUsage(payload.usage);
+    if(payload.usage)updateUsage(payload.usage);
     showResultFrame(submittedText,payload);
   }catch(error){
     stopScanAnimation();
