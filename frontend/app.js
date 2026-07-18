@@ -2,9 +2,10 @@ const scanStage = document.getElementById("scan-stage");
 const scanMessage = document.getElementById("scan-message");
 const scanLayer = document.getElementById("scan-layer");
 const CHECK_COOLDOWN_MS=5000,MIN_LENGTH=10,MAX_LENGTH=10000;
-const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),processingFrame=document.getElementById('processing-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultBackButton=document.getElementById('result-back-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyButton=document.getElementById('history-button'),historyOverlay=document.getElementById('history-overlay'),historyBack=document.getElementById('history-back'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
+const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),processingFrame=document.getElementById('processing-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultBackButton=document.getElementById('result-back-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
 const cancelCheckButton=document.getElementById('cancel-check-button'),psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
 const practiceContent=document.getElementById('practice-content'),practiceMessage=document.getElementById('practice-message'),practiceProgress=document.getElementById('practice-progress'),practiceScore=document.getElementById('practice-score'),practiceAnswerButtons=document.querySelectorAll('.practice-answer-button'),practiceFeedback=document.getElementById('practice-feedback'),practiceNextButton=document.getElementById('practice-next-button');
+const navLinks=document.querySelectorAll('.nav-link[data-view]'),pageViews=document.querySelectorAll('[data-view-panel]');
 let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),activeCheckController=null,sessionAtLimit=false,isOffline=!navigator.onLine;
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
 const samples={bank:'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',delivery:'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',prize:'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.'};
@@ -71,6 +72,34 @@ const practicePrompts=[
   }
 ];
 const normalizedValue=()=>messageInput.value.replace(/\s+/g,' ').trim();
+const viewTitles={analyze:'Kiểm tra',history:'Lịch sử',practice:'Luyện tập'};
+
+function viewFromHash(){
+  const candidate=window.location.hash.slice(1);
+  return Object.hasOwn(viewTitles,candidate)?candidate:'analyze';
+}
+
+function switchView(view,{focus=false}={}){
+  const target=Object.hasOwn(viewTitles,view)?view:'analyze';
+  pageViews.forEach(panel=>{
+    panel.hidden=panel.dataset.viewPanel!==target;
+  });
+  navLinks.forEach(link=>{
+    if(link.dataset.view===target)link.setAttribute('aria-current','page');
+    else link.removeAttribute('aria-current');
+  });
+  if(target==='history'){
+    selectedHistoryIds.clear();
+    renderHistory();
+  }
+  document.title=`${viewTitles[target]} · ScamCheck`;
+  if(focus){
+    const panel=document.querySelector(`[data-view-panel="${target}"]`);
+    panel?.focus({preventScroll:true});
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+}
+
 function showFeedback(message,type='error'){feedback.textContent=message;feedback.className=`feedback ${type}`}
 function hideFeedback(){feedback.textContent='';feedback.className='feedback'}
 function getCooldownRemaining(){return Math.max(0,CHECK_COOLDOWN_MS-(Date.now()-lastCheckAt))}
@@ -131,6 +160,7 @@ function saveHistory(message){
     date:new Date().toISOString()
   });
   localStorage.setItem('scamcheck-history',JSON.stringify(history.slice(0,10)));
+  if(viewFromHash()==='history')renderHistory();
 }
 
 function updateHistorySelectionUi(){
@@ -193,29 +223,28 @@ function renderHistory(){
 
     content.append(message,time);
     row.append(checkbox,content);
-    article.appendChild(row);
+    const actions=document.createElement('div');
+    actions.className='history-item-actions';
+    const reuseButton=document.createElement('button');
+    reuseButton.className='history-reuse-button';
+    reuseButton.type='button';
+    reuseButton.textContent='Kiểm tra lại';
+    reuseButton.addEventListener('click',()=>{
+      messageInput.value=item.message;
+      messageInput.dispatchEvent(new Event('input'));
+      processingFrame.classList.remove('active');
+      resultFrame.classList.remove('active');
+      inputFrame.style.display='block';
+      window.location.hash='analyze';
+      switchView('analyze');
+      window.setTimeout(()=>messageInput.focus(),0);
+    });
+    actions.appendChild(reuseButton);
+    article.append(row,actions);
     historyList.appendChild(article);
   });
 
   updateHistorySelectionUi();
-}
-
-function openHistory(){
-  selectedHistoryIds.clear();
-  renderHistory();
-  historyOverlay.classList.add('open');
-  historyOverlay.setAttribute('aria-hidden','false');
-  document.body.style.overflow='hidden';
-  historyBack.focus();
-}
-
-function closeHistory(){
-  selectedHistoryIds.clear();
-  updateHistorySelectionUi();
-  historyOverlay.classList.remove('open');
-  historyOverlay.setAttribute('aria-hidden','true');
-  document.body.style.overflow='';
-  historyButton.focus();
 }
 
 function openDeleteConfirmation(){
@@ -240,12 +269,14 @@ function openDeleteConfirmation(){
 
   deleteConfirmModal.classList.add('open');
   deleteConfirmModal.setAttribute('aria-hidden','false');
+  document.body.style.overflow='hidden';
   deleteCancelButton.focus();
 }
 
 function closeDeleteConfirmation(){
   deleteConfirmModal.classList.remove('open');
   deleteConfirmModal.setAttribute('aria-hidden','true');
+  document.body.style.overflow='';
   historyDeleteButton.focus();
 }
 
@@ -270,9 +301,11 @@ function confirmDeleteSelectedHistory(){
   selectedHistoryIds.clear();
   deleteConfirmModal.classList.remove('open');
   deleteConfirmModal.setAttribute('aria-hidden','true');
+  document.body.style.overflow='';
   renderHistory();
   historySelectedCount.textContent=`Đã xóa ${deletedCount} tin nhắn`;
-  historyBack.focus();
+  const historyNav=document.querySelector('.nav-link[data-view="history"]');
+  historyNav?.focus();
 }
 
 function startScanAnimation(message){
@@ -563,13 +596,17 @@ messageInput.addEventListener('input',updateInputState);
 clearButton.addEventListener('click',()=>{messageInput.value='';messageInput.focus();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
-historyButton.addEventListener('click',openHistory);
-historyBack.addEventListener('click',closeHistory);
 historyDeleteButton.addEventListener('click',openDeleteConfirmation);
 deleteCancelButton.addEventListener('click',closeDeleteConfirmation);
 deleteConfirmButton.addEventListener('click',confirmDeleteSelectedHistory);
-historyOverlay.addEventListener('click',event=>{if(event.target===historyOverlay)closeHistory()});
 deleteConfirmModal.addEventListener('click',event=>{if(event.target===deleteConfirmModal)closeDeleteConfirmation()});
+navLinks.forEach(link=>link.addEventListener('click',event=>{
+  const target=link.dataset.view;
+  if(window.location.hash===`#${target}`){
+    event.preventDefault();
+    switchView(target,{focus:true});
+  }
+}));
 practiceAnswerButtons.forEach(button=>button.addEventListener('click',()=>{
   submitPracticeAnswer(button.dataset.answer,button);
 }));
@@ -588,9 +625,7 @@ document.addEventListener('keydown',event=>{
   if(event.key!=='Escape')return;
   if(deleteConfirmModal.classList.contains('open')){
     closeDeleteConfirmation();
-    return;
   }
-  if(historyOverlay.classList.contains('open'))closeHistory();
 });
 checkButton.addEventListener('click',async()=>{
   const clean=normalizedValue();
@@ -672,4 +707,6 @@ resultBackButton.addEventListener('click',()=>{
 });
 window.addEventListener('online',updateConnectivityState);
 window.addEventListener('offline',updateConnectivityState);
-setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();if(isCooldownActive())updateCooldownState();
+window.addEventListener('hashchange',()=>switchView(viewFromHash(),{focus:true}));
+if(!window.location.hash)window.history.replaceState(null,'','#analyze');
+setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();switchView(viewFromHash());if(isCooldownActive())updateCooldownState();

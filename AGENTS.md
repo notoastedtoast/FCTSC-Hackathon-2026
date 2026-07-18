@@ -97,7 +97,9 @@ The cancel button aborts only the browser's wait. The provider/database operatio
 already have started and its audit reservation may still be counted, so the page states
 that caveat and refreshes usage. A successful submission is added to a ten-item
 localStorage history; deleting that browser-local copy does not delete the SQLite
-analysis.
+analysis. The persistent top navigation uses `#analyze`, `#history`, and `#practice` views.
+History is a dedicated page rather than a dialog; its “Kiểm tra lại” action copies a local
+message into the analysis composer without calling an API.
 
 The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app.js`, and
 `/scamcheck-logo.png` after a successful online visit. When the browser reports that it is
@@ -218,7 +220,8 @@ legacy-schema test in `tests/test_database.py`.
   messages, including the four named library groups and prompt-injection attempts.
 - `tests/test_frontend.py`: validates that the root page calls the analysis and usage
   APIs online; renders Detective/Cô tâm lý separately; keeps the balanced practice dataset
-  and grading in the browser; and wires the explicitly preliminary offline analyzer.
+  and grading in the browser; wires the explicitly preliminary offline analyzer; and keeps
+  analysis, local history, and practice in separate hash-routed views.
 - `tests/factories.py`: canonical ordered scenario builders shared by API/analyzer/database
   tests. Use these instead of hand-building a partial scenario matrix.
 - `tests/_logging.py`: disables expected error logs during tests. Import it before code
@@ -226,16 +229,19 @@ legacy-schema test in `tests/test_database.py`.
 
 ### Commands, UI, and repository metadata
 
-- `frontend/index.html`: accessible mobile UI, connectivity notice, and
-  recognition-exercise structure, with references to the browser assets.
+- `frontend/index.html`: accessible application shell with persistent top navigation,
+  separate analysis/history/practice views, result/processing states, connectivity notice,
+  and references to the browser assets.
 - `frontend/styles.css`: mobile-first page styling, the automatic 900px+ widescreen
-  layout, responsive rules, and reduced-motion behavior.
+  analysis workspace, responsive navigation and result/history/practice layouts, focus
+  states, and reduced-motion behavior.
 - `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
   handling, safe result rendering,
   voice input, cancellation, browser-local recent-message history, and the local
   recognition prompts/grading/score. It registers the offline shell service worker and
-  routes offline submissions through the local analyzer. It contains no direct character
-  API call or chat UI.
+  routes offline submissions through the local analyzer, owns hash-based view switching,
+  and supports reusing a history item in the composer. It contains no direct character API
+  call or chat UI.
 - `frontend/offline-analyzer.js`: conservative, browser-only rules that return a compatible
   preliminary risk result without network, quota, cookie, or database access. It is not
   used to override a Gemini result.
@@ -367,6 +373,13 @@ a conservative local rules engine only while offline and clearly labels its outp
 preliminary; online analysis remains provider-backed and authoritative. No API response or
 submitted text is cached, and offline results do not consume quota or reach SQLite. The
 database schema, public response shapes, and provider prompts did not change.
+
+The later UI/UX refactor replaced the stacked analysis/practice page and history overlay
+with a persistent three-item top navigation. Analysis, browser-local history, and practice
+are independent hash-routed views; history items can be copied back into the composer.
+Mobile remains single-column while desktop uses a focused analysis workspace and compact
+result grids. No API, provider prompt, database schema, offline rule, or public response
+shape changed.
 
 ## Handoff checklist
 
