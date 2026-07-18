@@ -324,7 +324,7 @@ function renderHistory(){
     const actions=document.createElement('div');
     actions.className='history-item-actions';
     const reviewButton=document.createElement('button');
-    reviewButton.className='history-review-button';
+    reviewButton.className=`history-review-button ${riskLevel||'unavailable'}`;
     reviewButton.type='button';
     reviewButton.textContent=result?'Xem kết quả':'Kết quả chưa lưu';
     reviewButton.disabled=!result;
