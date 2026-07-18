@@ -20,12 +20,21 @@ from tests.factories import scenario_assessments
 
 
 class RegressionAnalyzer:
-    """Stable provider double so the corpus exercises API and local risk filtering."""
+    """Stable provider double so the corpus exercises API risk propagation."""
 
-    async def analyze(self, _request: AnalyzeRequest) -> ScamAnalysis:
+    def __init__(self, labels_by_text: dict[str, RiskLevel]) -> None:
+        self.labels_by_text = labels_by_text
+
+    async def analyze(self, request: AnalyzeRequest) -> ScamAnalysis:
+        risk_level = self.labels_by_text[request.text]
         return ScamAnalysis(
-            confidence=0.01,
-            reasoning="Không có tín hiệu từ nhà cung cấp mô phỏng.",
+            risk_level=risk_level,
+            confidence={
+                "safe": 0.05,
+                "suspicious": 0.55,
+                "dangerous": 0.95,
+            }[risk_level],
+            reasoning="Kết quả ổn định từ nhà cung cấp mô phỏng.",
             scenarios=scenario_assessments(),
         )
 
@@ -60,9 +69,10 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
             settings=Settings(
                 google_api_key="test-key",
                 google_model="gemini-test",
-                ai_session_call_limit=100,
             ),
-            analyzer=RegressionAnalyzer(),
+            analyzer=RegressionAnalyzer(
+                {case["text"]: case["expected"] for case in cases}
+            ),
             repository=repository,
         )
 

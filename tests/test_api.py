@@ -81,6 +81,33 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         await analyzer.aclose()
         self.assertTrue(analyzer.closed)
 
+    async def test_root_serves_integrated_frontend_and_logo(self) -> None:
+        analyzer = StubAnalyzer()
+        app = create_app(analyzer=analyzer, repository=self.repository)
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            page = await client.get("/")
+            logo = await client.get("/scamcheck-logo.png")
+            styles = await client.get("/styles.css")
+            script = await client.get("/app.js")
+            health = await client.get("/health")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("text/html", page.headers["content-type"])
+        self.assertIn("ScamCheck - Kiểm tra nội dung đáng ngờ", page.text)
+        self.assertEqual(logo.status_code, 200)
+        self.assertEqual(logo.headers["content-type"], "image/png")
+        self.assertTrue(logo.content.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(styles.status_code, 200)
+        self.assertIn("text/css", styles.headers["content-type"])
+        self.assertIn(":root", styles.text)
+        self.assertEqual(script.status_code, 200)
+        self.assertIn("text/javascript", script.headers["content-type"])
+        self.assertIn('requestJson("/analyze"', script.text)
+        self.assertEqual(health.json(), {"status": "ok"})
+
     async def test_character_chat_endpoint_is_not_exposed(self) -> None:
         analyzer = StubAnalyzer()
         app = create_app(analyzer=analyzer, repository=self.repository)
@@ -89,9 +116,46 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
             any("/characters/" in path for path in app.openapi()["paths"])
         )
 
+    async def test_manual_link_inspection_endpoint_is_not_exposed(self) -> None:
+        analyzer = StubAnalyzer()
+        app = create_app(analyzer=analyzer, repository=self.repository)
+
+        self.assertNotIn("/links/inspect", app.openapi()["paths"])
+
+    async def test_scam_catalog_lists_filters_and_returns_details(self) -> None:
+        analyzer = StubAnalyzer()
+        app = create_app(analyzer=analyzer, repository=self.repository)
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            all_types = await client.get("/scam-types")
+            bank_types = await client.get("/scam-types", params={"group": "fake_bank"})
+            detail = await client.get("/scam-types/bank-account-lock")
+            missing = await client.get("/scam-types/not-found")
+
+        self.assertEqual(all_types.status_code, 200)
+        self.assertGreaterEqual(len(all_types.json()), 12)
+        self.assertEqual(bank_types.status_code, 200)
+        self.assertGreaterEqual(len(bank_types.json()), 2)
+        self.assertTrue(all(item["group"] == "fake_bank" for item in bank_types.json()))
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["id"], "bank-account-lock")
+        self.assertTrue(detail.json()["example_message"])
+        self.assertEqual(missing.status_code, 404)
+
+    async def test_practice_api_is_not_exposed(self) -> None:
+        analyzer = StubAnalyzer()
+        app = create_app(analyzer=analyzer, repository=self.repository)
+
+        self.assertFalse(
+            any(path.startswith("/practice-messages") for path in app.openapi()["paths"])
+        )
+
     async def test_get_analysis_returns_stored_record_by_id(self) -> None:
         analyzer = StubAnalyzer(
             result=ScamAnalysis(
+                risk_level="suspicious",
                 confidence=0.84,
                 reasoning="The sender impersonates a bank.",
                 indicators=["Impersonation"],
@@ -147,6 +211,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_analyze_delegates_request_and_returns_analysis(self) -> None:
         analyzer = StubAnalyzer(
             result=ScamAnalysis(
+                risk_level="dangerous",
                 confidence=0.91,
                 reasoning="The message creates urgency and requests credentials.",
                 indicators=["Urgency", "Credential request"],
@@ -191,7 +256,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
                     "message": "Cô hiểu sự thúc ép này dễ làm bác lo. Bác cứ chậm lại để nhìn rõ chiêu tạo áp lực.",
                 },
                 "character_notice": None,
-                "usage": {"used": 2, "limit": 10},
+                "usage": {"used": 2},
             },
         )
         self.assertEqual(
@@ -222,48 +287,13 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         await analyzer.aclose()
         self.assertTrue(analyzer.closed)
 
-    async def test_session_quota_stops_new_ai_calls_and_exposes_audit_history(self) -> None:
+    async def test_session_has_no_call_limit_and_exposes_audit_history(self) -> None:
         analyzer = StubAnalyzer(
             result=ScamAnalysis(
+                risk_level="dangerous",
                 confidence=0.8,
                 reasoning="The sender requests an OTP.",
                 scenarios=scenario_assessments("credential_or_otp_theft"),
-            )
-        )
-        settings = Settings(
-            google_api_key="test-key",
-            google_model="gemini-test",
-            ai_session_call_limit=2,
-        )
-        app = create_app(settings=settings, analyzer=analyzer, repository=self.repository)
-
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
-        ) as client:
-            first = await client.post("/analyze", json={"text": "Send your OTP now"})
-            blocked = await client.post("/analyze", json={"text": "Another message"})
-            history = await client.get("/session/ai-calls")
-
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(first.json()["usage"], {"used": 2, "limit": 2})
-        self.assertEqual(blocked.status_code, 429)
-        self.assertIn("call limit", blocked.json()["detail"])
-        self.assertEqual(blocked.headers["x-ai-calls-used"], "2")
-        self.assertEqual(analyzer.events, ["detective", "character"])
-        self.assertEqual(history.status_code, 200)
-        self.assertEqual(history.json()["usage"], {"used": 2, "limit": 2})
-        calls = history.json()["calls"]
-        self.assertEqual([call["kind"] for call in calls], ["detective", "character"])
-        self.assertEqual([call["input_length"] for call in calls], [17, 17])
-        self.assertTrue(all(call["success"] for call in calls))
-        self.assertTrue(all(call["summary"] for call in calls))
-
-    async def test_safe_analysis_does_not_call_character(self) -> None:
-        analyzer = StubAnalyzer(
-            result=ScamAnalysis(
-                confidence=0.02,
-                reasoning="Ordinary conversation.",
-                scenarios=scenario_assessments(),
             )
         )
         app = create_app(analyzer=analyzer, repository=self.repository)
@@ -271,7 +301,46 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://testserver"
         ) as client:
-            response = await client.post("/analyze", json={"text": "Lunch at noon?"})
+            responses = [
+                await client.post(
+                    "/analyze",
+                    json={"text": f"Send your OTP now, message {index}"},
+                )
+                for index in range(6)
+            ]
+            history = await client.get("/session/ai-calls")
+
+        self.assertEqual([response.status_code for response in responses], [200] * 6)
+        self.assertEqual(responses[-1].json()["usage"], {"used": 12})
+        self.assertEqual(analyzer.events, ["detective", "character"] * 6)
+        self.assertEqual(history.status_code, 200)
+        self.assertEqual(history.json()["usage"], {"used": 12})
+        calls = history.json()["calls"]
+        self.assertEqual(
+            [call["kind"] for call in calls],
+            ["detective", "character"] * 6,
+        )
+        self.assertTrue(all(call["success"] for call in calls))
+        self.assertTrue(all(call["summary"] for call in calls))
+
+    async def test_safe_provider_result_is_authoritative_and_skips_character(self) -> None:
+        analyzer = StubAnalyzer(
+            result=ScamAnalysis(
+                risk_level="safe",
+                confidence=0.99,
+                reasoning="The provider classified the message as safe.",
+                scenarios=scenario_assessments("credential_or_otp_theft"),
+            )
+        )
+        app = create_app(analyzer=analyzer, repository=self.repository)
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            response = await client.post(
+                "/analyze",
+                json={"text": "Send your OTP and transfer money immediately"},
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["detective"]["risk_level"], "safe")
@@ -282,6 +351,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_character_failure_keeps_detective_result(self) -> None:
         analyzer = StubAnalyzer(
             result=ScamAnalysis(
+                risk_level="dangerous",
                 confidence=0.8,
                 reasoning="The message requests an OTP.",
                 scenarios=scenario_assessments("credential_or_otp_theft"),
@@ -316,7 +386,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
             response.json(),
             {"detail": "Unable to complete scam analysis at this time"},
         )
-        self.assertEqual(history.json()["usage"], {"used": 1, "limit": 10})
+        self.assertEqual(history.json()["usage"], {"used": 1})
         self.assertFalse(history.json()["calls"][0]["success"])
         await analyzer.aclose()
         self.assertTrue(analyzer.closed)
@@ -324,6 +394,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_analyze_rejects_invalid_payloads(self) -> None:
         analyzer = StubAnalyzer(
             result=ScamAnalysis(
+                risk_level="safe",
                 confidence=0.1,
                 reasoning="Looks safe.",
                 scenarios=scenario_assessments(),
@@ -355,6 +426,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
 
         analyzer = StubAnalyzer(
             result=ScamAnalysis(
+                risk_level="safe",
                 confidence=0.2,
                 reasoning="No strong scam signals.",
                 scenarios=scenario_assessments(),

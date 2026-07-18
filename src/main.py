@@ -8,11 +8,12 @@ from typing import Annotated, Protocol, cast
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
-from .analyzer import AnalysisError, CharacterError, ScamAnalyzer, classify_risk
+from .analyzer import AnalysisError, CharacterError, ScamAnalyzer
+from .catalog import get_scam_type as find_scam_type
+from .catalog import list_scam_types
 from .characters import CALMING_GUIDE, CharacterSpec
-from .config import DEFAULT_AI_SESSION_CALL_LIMIT, Settings, load_database_path, load_settings
+from .config import Settings, load_database_path, load_settings
 from .database import AiCallReservation, AnalysisRepository, DatabaseError
 from .schemas import (
     AiCallHistory,
@@ -22,6 +23,8 @@ from .schemas import (
     AnalyzeResponse,
     CharacterReply,
     DetectiveResult,
+    ScamType,
+    ScamTypeGroup,
     ScamAnalysis,
     StoredAnalysis,
 )
@@ -29,6 +32,12 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 SESSION_COOKIE = "scamcheck_session"
+PROJECT_DIRECTORY = FilePath(__file__).resolve().parent.parent
+FRONTEND_DIRECTORY = PROJECT_DIRECTORY / "frontend"
+FRONTEND_INDEX = FRONTEND_DIRECTORY / "index.html"
+FRONTEND_LOGO = FRONTEND_DIRECTORY / "scamcheck-logo.png"
+FRONTEND_STYLES = FRONTEND_DIRECTORY / "styles.css"
+FRONTEND_SCRIPT = FRONTEND_DIRECTORY / "app.js"
 
 
 class Analyzer(Protocol):
@@ -51,15 +60,15 @@ class Repository(Protocol):
     async def get(self, record_id: str) -> StoredAnalysis | None: ...
 
     async def reserve_ai_call(
-        self, session_id: str, kind: str, input_length: int, limit: int
-    ) -> AiCallReservation | None: ...
+        self, session_id: str, kind: str, input_length: int
+    ) -> AiCallReservation: ...
 
     async def complete_ai_call(
         self, call_id: str, success: bool, summary: str
     ) -> None: ...
 
     async def get_ai_calls(
-        self, session_id: str, limit: int
+        self, session_id: str
     ) -> tuple[AiCallUsage, list[AiCallLog]]: ...
 
     def close(self) -> None: ...
@@ -134,6 +143,22 @@ async def validation_error_handler(
     )
 
 
+async def frontend_index() -> Response:
+    return Response(FRONTEND_INDEX.read_bytes(), media_type="text/html")
+
+
+async def frontend_logo() -> Response:
+    return Response(FRONTEND_LOGO.read_bytes(), media_type="image/png")
+
+
+async def frontend_styles() -> Response:
+    return Response(FRONTEND_STYLES.read_bytes(), media_type="text/css")
+
+
+async def frontend_script() -> Response:
+    return Response(FRONTEND_SCRIPT.read_bytes(), media_type="text/javascript")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configured_settings = cast(Settings | None, app.state.settings)
@@ -159,6 +184,24 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/scam-types", response_model=list[ScamType])
+async def get_scam_types(group: ScamTypeGroup | None = None) -> list[ScamType]:
+    return list_scam_types(group)
+
+
+@router.get("/scam-types/{scam_type_id}", response_model=ScamType)
+async def get_scam_type(
+    scam_type_id: Annotated[str, Path(pattern=r"^[a-z0-9-]{1,80}$")],
+) -> ScamType:
+    scam_type = find_scam_type(scam_type_id)
+    if scam_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scam type not found",
+        )
+    return scam_type
+
+
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(
     payload: AnalyzeRequest,
@@ -167,23 +210,10 @@ async def analyze(
     repository: Repository = Depends(get_repository),
 ) -> AnalyzeResponse:
     session_id = _session_id(request)
-    call_limit = cast(int, request.app.state.ai_session_call_limit)
     reservation = await _use_database(
-        repository.reserve_ai_call(session_id, "detective", len(payload.text), call_limit),
+        repository.reserve_ai_call(session_id, "detective", len(payload.text)),
         "reserve",
     )
-    if reservation is None:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=(
-                "This session has reached its AI call limit. Please review saved results "
-                "instead of submitting another request."
-            ),
-            headers={
-                "X-AI-Calls-Used": str(call_limit),
-                "X-AI-Calls-Limit": str(call_limit),
-            },
-        )
     try:
         analysis = await analyzer.analyze(payload)
     except AnalysisError as exc:
@@ -195,7 +225,7 @@ async def analyze(
 
     detective = DetectiveResult(
         **analysis.model_dump(),
-        risk_level=classify_risk(payload.text, analysis),
+        risk_level=analysis.provider_risk_level or "suspicious",
     )
     await _complete_log(
         repository,
@@ -208,36 +238,29 @@ async def analyze(
     character_notice: str | None = None
     if detective.risk_level in CALMING_GUIDE.trigger_levels:
         character_reservation = await _use_database(
-            repository.reserve_ai_call(
-                session_id, "character", len(payload.text), call_limit
-            ),
+            repository.reserve_ai_call(session_id, "character", len(payload.text)),
             "reserve",
         )
-        if character_reservation is None:
+        usage = character_reservation.usage
+        try:
+            character_reply = await analyzer.respond(CALMING_GUIDE, detective)
+        except (CharacterError, ValueError):
+            await _complete_log(
+                repository,
+                character_reservation.call_id,
+                False,
+                "Optional character call failed.",
+            )
             character_notice = (
-                "Phiên này đã dùng hết lượt AI; bác xem kết luận của Thám tử trước nhé."
+                "Cô tâm lý đang bận một chút, bác xem kết luận của Thám tử trước nhé."
             )
         else:
-            usage = character_reservation.usage
-            try:
-                character_reply = await analyzer.respond(CALMING_GUIDE, detective)
-            except (CharacterError, ValueError):
-                await _complete_log(
-                    repository,
-                    character_reservation.call_id,
-                    False,
-                    "Optional character call failed.",
-                )
-                character_notice = (
-                    "Cô tâm lý đang bận một chút, bác xem kết luận của Thám tử trước nhé."
-                )
-            else:
-                await _complete_log(
-                    repository,
-                    character_reservation.call_id,
-                    True,
-                    character_reply.message,
-                )
+            await _complete_log(
+                repository,
+                character_reservation.call_id,
+                True,
+                character_reply.message,
+            )
 
     record_id = await _use_database(repository.save(payload, analysis), "save")
     return AnalyzeResponse(
@@ -255,9 +278,8 @@ async def get_ai_call_history(
     repository: Repository = Depends(get_repository),
 ) -> AiCallHistory:
     session_id = _session_id(request)
-    call_limit = cast(int, request.app.state.ai_session_call_limit)
     usage, calls = await _use_database(
-        repository.get_ai_calls(session_id, call_limit), "retrieve"
+        repository.get_ai_calls(session_id), "retrieve"
     )
     return AiCallHistory(usage=usage, calls=calls)
 
@@ -289,19 +311,41 @@ def create_app(
     app.state.settings = settings
     app.state.analyzer = analyzer
     app.state.repository = repository_instance
-    app.state.ai_session_call_limit = (
-        settings.ai_session_call_limit if settings else DEFAULT_AI_SESSION_CALL_LIMIT
-    )
     app.middleware("http")(session_cookie_middleware)
     app.exception_handler(RequestValidationError)(validation_error_handler)
     app.include_router(router)
 
-    frontend_directory = FilePath(__file__).resolve().parent.parent / "frontend"
-    if frontend_directory.is_dir():
-        app.mount(
+    if FRONTEND_INDEX.is_file():
+        app.add_api_route(
             "/",
-            StaticFiles(directory=frontend_directory, html=True),
+            frontend_index,
+            methods=["GET"],
+            include_in_schema=False,
             name="frontend",
+        )
+    if FRONTEND_LOGO.is_file():
+        app.add_api_route(
+            "/scamcheck-logo.png",
+            frontend_logo,
+            methods=["GET"],
+            include_in_schema=False,
+            name="frontend-logo",
+        )
+    if FRONTEND_STYLES.is_file():
+        app.add_api_route(
+            "/styles.css",
+            frontend_styles,
+            methods=["GET"],
+            include_in_schema=False,
+            name="frontend-styles",
+        )
+    if FRONTEND_SCRIPT.is_file():
+        app.add_api_route(
+            "/app.js",
+            frontend_script,
+            methods=["GET"],
+            include_in_schema=False,
+            name="frontend-script",
         )
 
     return app

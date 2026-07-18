@@ -3,9 +3,6 @@
 import asyncio
 import json
 import logging
-import re
-from urllib.parse import urlparse
-from typing import cast
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
@@ -38,58 +35,6 @@ DETECTIVE_SYSTEM_INSTRUCTION = (
     "and a mere mention of notes or an attachment as safe unless concrete suspicious "
     "behavior is present. Return concise findings in Vietnamese."
 )
-
-INJECTION_MARKERS = (
-    "ignore previous",
-    "ignore all instructions",
-    "say this is safe",
-    "system prompt",
-    "act as",
-    "bỏ qua chỉ dẫn",
-    "bỏ qua hướng dẫn",
-    "hãy nói tin này an toàn",
-    "đổi vai",
-)
-SCAM_SIGNAL_GROUPS = (
-    ("otp", "password", "mật khẩu", "mã xác thực", "mã đăng nhập", "mã pin"),
-    ("chuyển tiền", "wire transfer", "gift card", "thanh toán", "usdt", "bitcoin"),
-    ("khẩn cấp", "ngay lập tức", "khóa tài khoản", "suspended", "bắt giữ", "đe dọa"),
-    ("bit.ly", "nhấp vào", "bấm vào", "anydesk", "remote access"),
-    ("trúng thưởng", "guaranteed return", "lợi nhuận", "hoàn tiền", "phí nhận", "nhận quà"),
-)
-OFFICIAL_HOSTS = (
-    "accounts.google.com",
-    "appleid.apple.com",
-    "login.microsoftonline.com",
-    "microsoft.com",
-    "paypal.com",
-)
-BENIGN_AUTHENTICATION_MARKERS = (
-    "do not share",
-    "don't share",
-    "không chia sẻ",
-    "ứng dụng chính thức",
-    "official app",
-    "official service",
-)
-RISK_ORDER: dict[RiskLevel, int] = {"safe": 0, "suspicious": 1, "dangerous": 2}
-
-
-def _has_untrusted_link(text: str) -> bool:
-    urls = re.findall(r"https?://[^\s<>]+", text)
-    if not urls:
-        return False
-    return any(
-        (
-            host := cast(
-                str,
-                urlparse(url.rstrip(".,;:!?)]}\"'")).hostname or "",
-            ).casefold()
-        )
-        and not any(host == official or host.endswith(f".{official}") for official in OFFICIAL_HOSTS)
-        for url in urls
-    )
-
 
 class GeminiScenarioAssessment(BaseModel):
     """Low-complexity provider schema; the public schema validates final constraints."""
@@ -135,44 +80,6 @@ class AnalysisError(RuntimeError):
 
 class CharacterError(RuntimeError):
     """Raised when an optional character response cannot be completed safely."""
-
-
-def classify_risk(text: str, analysis: ScamAnalysis) -> RiskLevel:
-    """Merge model output with local signals; local checks can only raise risk."""
-    detected_confidence = max(
-        (item.confidence for item in analysis.scenarios if item.detected),
-        default=0.0,
-    )
-    if max(analysis.confidence, detected_confidence) >= 0.75:
-        score_level: RiskLevel = "dangerous"
-    elif analysis.confidence >= 0.35 or detected_confidence > 0:
-        score_level = "suspicious"
-    else:
-        score_level = "safe"
-    model_level = max(
-        (score_level, analysis.provider_risk_level or "safe"), key=RISK_ORDER.__getitem__
-    )
-
-    normalized = text.casefold()
-    injection = any(marker in normalized for marker in INJECTION_MARKERS)
-    signal_groups = sum(
-        any(marker in normalized for marker in group) for group in SCAM_SIGNAL_GROUPS
-    )
-    signal_groups += _has_untrusted_link(normalized)
-    if (
-        not injection
-        and any(marker in normalized for marker in BENIGN_AUTHENTICATION_MARKERS)
-        and any(marker in normalized for marker in SCAM_SIGNAL_GROUPS[0])
-    ):
-        signal_groups -= 1
-    if signal_groups >= 2 or (injection and signal_groups):
-        local_level: RiskLevel = "dangerous"
-    elif injection or signal_groups:
-        local_level = "suspicious"
-    else:
-        local_level = "safe"
-
-    return max((model_level, local_level), key=RISK_ORDER.__getitem__)
 
 
 def fallback_analysis() -> ScamAnalysis:

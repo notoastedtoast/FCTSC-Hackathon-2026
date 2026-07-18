@@ -21,6 +21,12 @@ ScamScenario = Literal[
     "marketplace_or_delivery_fraud",
 ]
 RiskLevel = Literal["safe", "suspicious", "dangerous"]
+ScamTypeGroup = Literal[
+    "fake_bank",
+    "fake_police",
+    "prize",
+    "fake_delivery",
+]
 ActionText = Annotated[str, Field(min_length=1, max_length=300)]
 AnalysisId = Annotated[
     str,
@@ -113,6 +119,14 @@ class AnalyzeRequest(BaseModel):
         return value
 
 
+class ScamType(BaseModel):
+    id: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9-]+$")
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=1_000)
+    example_message: str = Field(min_length=1, max_length=1_000)
+    group: ScamTypeGroup
+
+
 class ScamScenarioAssessment(BaseModel):
     scenario: ScamScenario
     detected: bool
@@ -185,11 +199,6 @@ class CharacterReply(BaseModel):
 
 class AiCallUsage(BaseModel):
     used: int = Field(ge=0)
-    limit: int = Field(gt=0)
-
-    @property
-    def remaining(self) -> int:
-        return max(0, self.limit - self.used)
 
 
 class AnalyzeResponse(BaseModel):
