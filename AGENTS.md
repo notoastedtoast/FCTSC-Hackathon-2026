@@ -99,7 +99,10 @@ that caveat and refreshes usage. A successful submission is added to a ten-item
 localStorage history; deleting that browser-local copy does not delete the SQLite
 analysis. The persistent top navigation uses `#analyze`, `#history`, and `#practice` views.
 History is a dedicated page rather than a dialog; its “Kiểm tra lại” action copies a local
-message into the analysis composer without calling an API.
+message into the analysis composer without calling an API. New history entries store a
+bounded snapshot of the displayed risk, reasoning, evidence, actions, Cô tâm lý text, and
+online/offline mode. Review renders that snapshot with text nodes and never regenerates it;
+legacy message-only entries remain supported.
 
 The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app.js`, and
 `/scamcheck-logo.png` after a successful online visit. When the browser reports that it is
@@ -380,6 +383,14 @@ are independent hash-routed views; history items can be copied back into the com
 Mobile remains single-column while desktop uses a focused analysis workspace and compact
 result grids. No API, provider prompt, database schema, offline rule, or public response
 shape changed.
+
+History review was then extended without changing the server contract. Each successful
+browser submission stores a bounded local snapshot of the result shown at that time:
+message, risk status, confidence, reasoning, up to four evidence items, three actions,
+Cô tâm lý text, and Gemini/offline mode. The History view expands this snapshot without an
+API call and keeps compatibility with older message-only entries. No result is regenerated,
+and the database schema, public response shapes, provider prompts, and offline rules did
+not change.
 
 ## Handoff checklist
 

@@ -152,15 +152,62 @@ function getHistory(){
   }
 }
 
-function saveHistory(message){
+function createHistorySnapshot(payload){
+  const detective=payload?.detective||{};
+  const riskLevels=new Set(['safe','suspicious','dangerous']);
+  const riskLevel=riskLevels.has(detective.risk_level)
+    ?detective.risk_level
+    :'suspicious';
+  const confidence=Number.isFinite(detective.confidence)
+    ?Math.min(1,Math.max(0,detective.confidence))
+    :null;
+  const evidence=Array.isArray(detective.indicator_evidence)
+    ?detective.indicator_evidence.slice(0,4).map(item=>({
+      label:String(item?.label||'Dấu hiệu đáng chú ý').slice(0,200),
+      excerpt:String(item?.excerpt||'').slice(0,500)
+    })).filter(item=>item.excerpt)
+    :[];
+  const actions=Array.isArray(detective.actions)
+    ?detective.actions.slice(0,3).map(action=>String(action).slice(0,300))
+    :[];
+  const characterMessage=payload?.character?.message||payload?.character_notice||'';
+
+  return {
+    risk_level:riskLevel,
+    confidence,
+    reasoning:String(detective.reasoning||'Không có phần giải thích được lưu.').slice(0,1000),
+    indicator_evidence:evidence,
+    actions,
+    character_message:String(characterMessage).slice(0,400),
+    mode:payload?.offline||detective.analysis_mode==='offline'?'offline':'gemini'
+  };
+}
+
+function saveHistory(message,payload){
   const history=getHistory();
   history.unshift({
     id:`history-${Date.now()}-${Math.random().toString(36).slice(2,9)}`,
     message,
-    date:new Date().toISOString()
+    date:new Date().toISOString(),
+    result:createHistorySnapshot(payload)
   });
-  localStorage.setItem('scamcheck-history',JSON.stringify(history.slice(0,10)));
+  try{
+    localStorage.setItem('scamcheck-history',JSON.stringify(history.slice(0,10)));
+  }catch(error){
+    return;
+  }
   if(viewFromHash()==='history')renderHistory();
+}
+
+function appendHistoryReviewSection(container,titleText,bodyText,className=''){
+  const section=document.createElement('section');
+  section.className=`history-review-section ${className}`.trim();
+  const title=document.createElement('h4');
+  title.textContent=titleText;
+  const body=document.createElement('p');
+  body.textContent=bodyText;
+  section.append(title,body);
+  container.appendChild(section);
 }
 
 function updateHistorySelectionUi(){
@@ -200,6 +247,20 @@ function renderHistory(){
     checkbox.setAttribute('aria-label',`Chọn tin nhắn lịch sử số ${index+1} để xóa`);
 
     const content=document.createElement('div');
+    const result=item.result&&typeof item.result==='object'?item.result:null;
+    const riskLevel=['safe','suspicious','dangerous'].includes(result?.risk_level)
+      ?result.risk_level
+      :null;
+    const riskLabels={safe:result?.mode==='offline'?'Chưa thấy dấu hiệu':'An toàn',suspicious:'Nghi ngờ',dangerous:'Nguy hiểm'};
+    const meta=document.createElement('div');
+    meta.className='history-meta';
+    const status=document.createElement('span');
+    status.className=`history-status ${riskLevel||'unavailable'}`;
+    status.textContent=riskLevel?riskLabels[riskLevel]:'Chưa lưu kết quả';
+    const mode=document.createElement('span');
+    mode.className='history-mode';
+    mode.textContent=result?.mode==='offline'?'Ngoại tuyến':result?'Gemini':'Bản cũ';
+    meta.append(status,mode);
     const message=document.createElement('div');
     message.className='history-message-text';
     message.textContent=item.message;
@@ -221,10 +282,75 @@ function renderHistory(){
       updateHistorySelectionUi();
     });
 
-    content.append(message,time);
+    content.append(meta,message,time);
     row.append(checkbox,content);
+
+    const review=document.createElement('div');
+    review.className='history-result-review';
+    review.id=`history-review-${index}`;
+    review.hidden=true;
+    appendHistoryReviewSection(review,'Tin nhắn',String(item.message||''),'history-review-message');
+    if(result){
+      const confidence=Number.isFinite(result.confidence)
+        ?` Mức rủi ro ước lượng: ${Math.round(result.confidence*100)}%.`
+        :'';
+      appendHistoryReviewSection(review,'Kết quả phân tích',`${String(result.reasoning||'Không có phần giải thích được lưu.')}${confidence}`);
+
+      const evidence=Array.isArray(result.indicator_evidence)
+        ?result.indicator_evidence.slice(0,4)
+        :[];
+      if(evidence.length){
+        const evidenceSection=document.createElement('section');
+        evidenceSection.className='history-review-section';
+        const evidenceTitle=document.createElement('h4');
+        evidenceTitle.textContent='Dấu hiệu và bằng chứng';
+        const evidenceList=document.createElement('ul');
+        evidence.forEach(itemEvidence=>{
+          const listItem=document.createElement('li');
+          listItem.textContent=`${String(itemEvidence?.label||'Dấu hiệu')}: “${String(itemEvidence?.excerpt||'')}”`;
+          evidenceList.appendChild(listItem);
+        });
+        evidenceSection.append(evidenceTitle,evidenceList);
+        review.appendChild(evidenceSection);
+      }
+
+      const actions=Array.isArray(result.actions)?result.actions.slice(0,3):[];
+      if(actions.length){
+        const actionSection=document.createElement('section');
+        actionSection.className='history-review-section';
+        const actionTitle=document.createElement('h4');
+        actionTitle.textContent='Hành động được đề xuất';
+        const actionList=document.createElement('ol');
+        actions.forEach(action=>{
+          const listItem=document.createElement('li');
+          listItem.textContent=String(action);
+          actionList.appendChild(listItem);
+        });
+        actionSection.append(actionTitle,actionList);
+        review.appendChild(actionSection);
+      }
+
+      if(result.character_message){
+        appendHistoryReviewSection(review,'Cô tâm lý',String(result.character_message),'history-review-character');
+      }
+    }else{
+      appendHistoryReviewSection(review,'Kết quả phân tích','Mục lịch sử này được tạo trước khi ScamCheck hỗ trợ lưu kết quả. Bác có thể chọn “Kiểm tra lại” để tạo kết quả mới.','history-review-unavailable');
+    }
+
     const actions=document.createElement('div');
     actions.className='history-item-actions';
+    const reviewButton=document.createElement('button');
+    reviewButton.className='history-review-button';
+    reviewButton.type='button';
+    reviewButton.textContent='Xem kết quả';
+    reviewButton.setAttribute('aria-expanded','false');
+    reviewButton.setAttribute('aria-controls',review.id);
+    reviewButton.addEventListener('click',()=>{
+      const expanded=reviewButton.getAttribute('aria-expanded')==='true';
+      reviewButton.setAttribute('aria-expanded',String(!expanded));
+      reviewButton.textContent=expanded?'Xem kết quả':'Ẩn kết quả';
+      review.hidden=expanded;
+    });
     const reuseButton=document.createElement('button');
     reuseButton.className='history-reuse-button';
     reuseButton.type='button';
@@ -239,8 +365,8 @@ function renderHistory(){
       switchView('analyze');
       window.setTimeout(()=>messageInput.focus(),0);
     });
-    actions.appendChild(reuseButton);
-    article.append(row,actions);
+    actions.append(reviewButton,reuseButton);
+    article.append(row,review,actions);
     historyList.appendChild(article);
   });
 
@@ -674,7 +800,7 @@ checkButton.addEventListener('click',async()=>{
     }
     if(activeCheckController!==controller)return;
     stopScanAnimation();
-    saveHistory(submittedText);
+    saveHistory(submittedText,payload);
     lastCheckAt=Date.now();
     sessionStorage.setItem('scamcheck-last-check-at',String(lastCheckAt));
     if(payload.usage)updateUsage(payload.usage);

@@ -1,4 +1,4 @@
-const CACHE_NAME="scamcheck-shell-v3";
+const CACHE_NAME="scamcheck-shell-v5";
 const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app.js","/scamcheck-logo.png"];
 
 self.addEventListener("install",event=>{
