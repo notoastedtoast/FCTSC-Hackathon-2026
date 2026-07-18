@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 
 DEFAULT_DATABASE_PATH: Final[Path] = Path.cwd() / "app.db"
+DEFAULT_AI_SESSION_CALL_LIMIT: Final[int] = 10
 
 
 class ConfigurationError(RuntimeError):
@@ -20,6 +21,7 @@ class Settings:
     google_api_key: str
     google_model: str
     database_path: str = str(DEFAULT_DATABASE_PATH)
+    ai_session_call_limit: int = DEFAULT_AI_SESSION_CALL_LIMIT
 
 
 def load_database_path() -> str:
@@ -49,8 +51,21 @@ def load_settings() -> Settings:
             "Set these values in .env or the environment."
         )
 
+    raw_call_limit = os.getenv("AI_SESSION_CALL_LIMIT")
+    try:
+        call_limit = (
+            int(raw_call_limit)
+            if raw_call_limit
+            else DEFAULT_AI_SESSION_CALL_LIMIT
+        )
+    except ValueError as exc:
+        raise ConfigurationError("AI_SESSION_CALL_LIMIT must be an integer") from exc
+    if call_limit < 1:
+        raise ConfigurationError("AI_SESSION_CALL_LIMIT must be at least 1")
+
     return Settings(
         google_api_key=api_key,
         google_model=model,
         database_path=os.getenv("DATABASE_PATH") or str(DEFAULT_DATABASE_PATH),
+        ai_session_call_limit=call_limit,
     )

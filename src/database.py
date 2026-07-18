@@ -68,12 +68,12 @@ class AnalysisRepository:
         return await asyncio.to_thread(self._get_sync, record_id)
 
     async def reserve_ai_call(
-        self, session_id: str, kind: str, input_length: int
-    ) -> AiCallReservation:
+        self, session_id: str, kind: str, input_length: int, limit: int
+    ) -> AiCallReservation | None:
         if self._is_in_memory:
-            return self._reserve_ai_call_sync(session_id, kind, input_length)
+            return self._reserve_ai_call_sync(session_id, kind, input_length, limit)
         return await asyncio.to_thread(
-            self._reserve_ai_call_sync, session_id, kind, input_length
+            self._reserve_ai_call_sync, session_id, kind, input_length, limit
         )
 
     async def complete_ai_call(
@@ -85,11 +85,11 @@ class AnalysisRepository:
         await asyncio.to_thread(self._complete_ai_call_sync, call_id, success, summary)
 
     async def get_ai_calls(
-        self, session_id: str
+        self, session_id: str, limit: int
     ) -> tuple[AiCallUsage, list[AiCallLog]]:
         if self._is_in_memory:
-            return self._get_ai_calls_sync(session_id)
-        return await asyncio.to_thread(self._get_ai_calls_sync, session_id)
+            return self._get_ai_calls_sync(session_id, limit)
+        return await asyncio.to_thread(self._get_ai_calls_sync, session_id, limit)
 
     def close(self) -> None:
         """Release the in-memory connection used by tests and local callers."""
@@ -205,8 +205,8 @@ class AnalysisRepository:
             raise DatabaseError("Stored scam analysis is invalid") from exc
 
     def _reserve_ai_call_sync(
-        self, session_id: str, kind: str, input_length: int
-    ) -> AiCallReservation:
+        self, session_id: str, kind: str, input_length: int, limit: int
+    ) -> AiCallReservation | None:
         try:
             with self._connection() as connection:
                 self._create_schema(connection)
@@ -219,6 +219,9 @@ class AnalysisRepository:
                         (session_id,),
                     ).fetchone()[0],
                 )
+                if used >= limit:
+                    connection.rollback()
+                    return None
                 call_id = token_hex(16)
                 connection.execute(
                     """
@@ -231,7 +234,7 @@ class AnalysisRepository:
                 connection.commit()
                 return AiCallReservation(
                     call_id=call_id,
-                    usage=AiCallUsage(used=used + 1),
+                    usage=AiCallUsage(used=used + 1, limit=limit),
                 )
         except (OSError, sqlite3.Error) as exc:
             raise DatabaseError("Unable to reserve an AI call") from exc
@@ -250,7 +253,7 @@ class AnalysisRepository:
             raise DatabaseError("Unable to complete an AI call log") from exc
 
     def _get_ai_calls_sync(
-        self, session_id: str
+        self, session_id: str, limit: int
     ) -> tuple[AiCallUsage, list[AiCallLog]]:
         try:
             with self._connection() as connection, connection:
@@ -281,7 +284,7 @@ class AnalysisRepository:
             )
             for row in rows
         ]
-        return AiCallUsage(used=len(calls)), calls
+        return AiCallUsage(used=len(calls), limit=limit), calls
 
     def _connect(self) -> sqlite3.Connection:
         """Return a raw connection for local diagnostics and backwards compatibility."""

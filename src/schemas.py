@@ -199,6 +199,11 @@ class CharacterReply(BaseModel):
 
 class AiCallUsage(BaseModel):
     used: int = Field(ge=0)
+    limit: int = Field(gt=0)
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.limit - self.used)
 
 
 class AnalyzeResponse(BaseModel):

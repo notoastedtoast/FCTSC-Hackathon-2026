@@ -13,7 +13,12 @@ from .analyzer import AnalysisError, CharacterError, ScamAnalyzer
 from .catalog import get_scam_type as find_scam_type
 from .catalog import list_scam_types
 from .characters import CALMING_GUIDE, CharacterSpec
-from .config import Settings, load_database_path, load_settings
+from .config import (
+    DEFAULT_AI_SESSION_CALL_LIMIT,
+    Settings,
+    load_database_path,
+    load_settings,
+)
 from .database import AiCallReservation, AnalysisRepository, DatabaseError
 from .schemas import (
     AiCallHistory,
@@ -60,15 +65,15 @@ class Repository(Protocol):
     async def get(self, record_id: str) -> StoredAnalysis | None: ...
 
     async def reserve_ai_call(
-        self, session_id: str, kind: str, input_length: int
-    ) -> AiCallReservation: ...
+        self, session_id: str, kind: str, input_length: int, limit: int
+    ) -> AiCallReservation | None: ...
 
     async def complete_ai_call(
         self, call_id: str, success: bool, summary: str
     ) -> None: ...
 
     async def get_ai_calls(
-        self, session_id: str
+        self, session_id: str, limit: int
     ) -> tuple[AiCallUsage, list[AiCallLog]]: ...
 
     def close(self) -> None: ...
@@ -210,10 +215,25 @@ async def analyze(
     repository: Repository = Depends(get_repository),
 ) -> AnalyzeResponse:
     session_id = _session_id(request)
+    call_limit = cast(int, request.app.state.ai_session_call_limit)
     reservation = await _use_database(
-        repository.reserve_ai_call(session_id, "detective", len(payload.text)),
+        repository.reserve_ai_call(
+            session_id, "detective", len(payload.text), call_limit
+        ),
         "reserve",
     )
+    if reservation is None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Phiên này đã dùng hết lượt kiểm tra AI. Bác vui lòng xem lại "
+                "các kết quả đã lưu thay vì gửi thêm yêu cầu."
+            ),
+            headers={
+                "X-AI-Calls-Used": str(call_limit),
+                "X-AI-Calls-Limit": str(call_limit),
+            },
+        )
     try:
         analysis = await analyzer.analyze(payload)
     except AnalysisError as exc:
@@ -238,29 +258,37 @@ async def analyze(
     character_notice: str | None = None
     if detective.risk_level in CALMING_GUIDE.trigger_levels:
         character_reservation = await _use_database(
-            repository.reserve_ai_call(session_id, "character", len(payload.text)),
+            repository.reserve_ai_call(
+                session_id, "character", len(payload.text), call_limit
+            ),
             "reserve",
         )
-        usage = character_reservation.usage
-        try:
-            character_reply = await analyzer.respond(CALMING_GUIDE, detective)
-        except (CharacterError, ValueError):
-            await _complete_log(
-                repository,
-                character_reservation.call_id,
-                False,
-                "Optional character call failed.",
-            )
+        if character_reservation is None:
             character_notice = (
-                "Cô tâm lý đang bận một chút, bác xem kết luận của Thám tử trước nhé."
+                "Phiên này đã dùng hết lượt AI; bác xem kết luận của Thám tử "
+                "trước nhé."
             )
         else:
-            await _complete_log(
-                repository,
-                character_reservation.call_id,
-                True,
-                character_reply.message,
-            )
+            usage = character_reservation.usage
+            try:
+                character_reply = await analyzer.respond(CALMING_GUIDE, detective)
+            except (CharacterError, ValueError):
+                await _complete_log(
+                    repository,
+                    character_reservation.call_id,
+                    False,
+                    "Optional character call failed.",
+                )
+                character_notice = (
+                    "Cô tâm lý đang bận một chút, bác xem kết luận của Thám tử trước nhé."
+                )
+            else:
+                await _complete_log(
+                    repository,
+                    character_reservation.call_id,
+                    True,
+                    character_reply.message,
+                )
 
     record_id = await _use_database(repository.save(payload, analysis), "save")
     return AnalyzeResponse(
@@ -278,8 +306,9 @@ async def get_ai_call_history(
     repository: Repository = Depends(get_repository),
 ) -> AiCallHistory:
     session_id = _session_id(request)
+    call_limit = cast(int, request.app.state.ai_session_call_limit)
     usage, calls = await _use_database(
-        repository.get_ai_calls(session_id), "retrieve"
+        repository.get_ai_calls(session_id, call_limit), "retrieve"
     )
     return AiCallHistory(usage=usage, calls=calls)
 
@@ -311,6 +340,11 @@ def create_app(
     app.state.settings = settings
     app.state.analyzer = analyzer
     app.state.repository = repository_instance
+    app.state.ai_session_call_limit = (
+        settings.ai_session_call_limit
+        if settings is not None
+        else DEFAULT_AI_SESSION_CALL_LIMIT
+    )
     app.middleware("http")(session_cookie_middleware)
     app.exception_handler(RequestValidationError)(validation_error_handler)
     app.include_router(router)

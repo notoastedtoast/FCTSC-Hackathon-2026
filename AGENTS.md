@@ -21,8 +21,8 @@ Preserve these boundaries unless a user explicitly changes them:
 - Never log raw submitted text. SQLite intentionally stores analysis submissions.
 - Do not expose an endpoint or request schema for chatting with characters. Characters
   may only produce the optional one-time response generated during `/analyze`.
-- A session cookie groups provider-call audit records; it does not limit calls,
-  authenticate a user, or establish ownership of an analysis.
+- A session cookie limits and groups provider-call audit records; it does not authenticate
+  a user or establish ownership of an analysis.
 - Do not add speculative endpoints, tables, or abstractions. Extend the smallest existing
   contract that satisfies the request.
 
@@ -53,9 +53,9 @@ contract below records behavior that is easy to miss from schemas alone.
 | `GET /health` | None | `{"status":"ok"}` | Does not call Gemini or SQLite. |
 | `GET /scam-types` | Optional `group`: `fake_bank`, `fake_police`, `prize`, or `fake_delivery` | Array of 12 authored `ScamType` records, filtered when requested | Reads validated process-local data only; every group has three entries. |
 | `GET /scam-types/{scam_type_id}` | Lowercase hyphenated catalog ID | One `ScamType` with name, description, example message, and group | Returns 404 when absent and 422 for a malformed ID. |
-| `POST /analyze` | JSON `text` (1–10,000 nonblank characters), optional `source` (up to 100 characters) | `AnalyzeResponse`: random analysis `id`, `detective`, optional `character`, optional `character_notice`, and `usage` | Reserves and audits one `detective` call. A suspicious/dangerous result may reserve a second `character` call. There is no per-session call limit. Returns 502 for Detective provider failure and 503 for repository failure. The analysis is saved only after generation completes. |
+| `POST /analyze` | JSON `text` (1–10,000 nonblank characters), optional `source` (up to 100 characters) | `AnalyzeResponse`: random analysis `id`, `detective`, optional `character`, optional `character_notice`, and `usage` | Atomically reserves and audits one `detective` call under the configured session limit. A suspicious/dangerous result may reserve a second `character` call. Returns 429 without calling Gemini when no slot remains, 502 for Detective provider failure, and 503 for repository failure. The analysis is saved only after generation completes. |
 | `GET /analyses/{analysis_id}` | A 32-character lowercase hexadecimal ID | `StoredAnalysis` | Returns 404 when absent and 422 for a malformed ID. The random ID acts as a bearer capability; this route is not session-owned. Stored responses do not include the generated character reply. |
-| `GET /session/ai-calls` | HttpOnly session cookie set by middleware | `AiCallHistory` with the total `used` count and ordered calls | Returns audit metadata for the current cookie session only. It does not enforce a limit or return analysis ownership. |
+| `GET /session/ai-calls` | HttpOnly session cookie set by middleware | `AiCallHistory` with authoritative `used`/`limit` usage and ordered calls | Returns audit metadata for the current cookie session only. It does not return analysis ownership. |
 | `GET /` | None | `frontend/index.html` | Registered when the file exists; it does not expose other repository files. |
 | `GET /styles.css` | None | `frontend/styles.css` | Explicit stylesheet route; no directory mount or listing. |
 | `GET /app.js` | None | `frontend/app.js` | Explicit JavaScript route; no directory mount or listing. |
@@ -71,8 +71,9 @@ handler specific to `/analyze`; it also handles path parameters.
 
 1. `session_cookie_middleware` accepts a valid 32-character hex cookie or generates one.
 2. Pydantic validates `AnalyzeRequest` before route code runs.
-3. `reserve_ai_call` inserts a pending `detective` audit row and returns the updated
-   session call count. It does not enforce a limit.
+3. `reserve_ai_call` atomically checks the configured session limit, inserts a pending
+   `detective` audit row when a slot remains, and returns authoritative `used`/`limit`
+   usage. A full session receives 429 without a provider call.
 4. `ScamAnalyzer.analyze` requests structured Gemini JSON. Malformed provider content
    becomes a conservative fallback; timeouts and HTTP failures become `AnalysisError`.
 5. The validated provider `risk_level` becomes the Detective risk unchanged. If malformed
@@ -86,8 +87,8 @@ handler specific to `/analyze`; it also handles path parameters.
 The frontend makes one checking request to `/analyze` and renders the returned `detective`
 and `character`/`character_notice` in separate panels. It never calls Cô tâm lý directly.
 Provider evidence and raw submitted text are rendered with DOM text nodes, never as active
-links or HTML. The page also reads `/session/ai-calls` to display the authoritative
-provider-call count.
+links or HTML. The page also reads `/session/ai-calls` to display authoritative
+`used`/`limit` usage and disables submission after the session reaches its ceiling.
 
 The cancel button aborts only the browser's wait. The provider/database operation may
 already have started and its audit reservation may still be counted, so the page states
@@ -148,8 +149,8 @@ creation and the migration path for older analysis tables.
   final success status, summary, and timestamp.
 - There is intentionally no character-chat endpoint, request schema, conversation table,
   or transcript storage.
-- AI-call audit reservation uses `BEGIN IMMEDIATE`, making the count-and-insert operation
-  atomic for concurrent requests on a file database.
+- AI-call quota reservation uses `BEGIN IMMEDIATE`, making the limit-check-and-insert
+  operation atomic for concurrent requests on a file database.
 - `_complete_log` intentionally does not fail an otherwise completed API response when an
   audit update fails; it logs the database exception server-side.
 - The `scamcheck_session` cookie is HttpOnly, SameSite=Lax, and Secure on HTTPS. It scopes
@@ -182,21 +183,22 @@ legacy-schema test in `tests/test_database.py`.
   cryptographically random IDs, atomic AI-call reservations, audit completion/history,
   async thread handoff for file databases, and the shared in-memory test connection.
 - `src/config.py`: `.env` loading, provider aliases (`GOOGLE_*` preferred over legacy
-  `GEMINI_*`), and database path. Loading only the database path does not require provider
-  credentials.
+  `GEMINI_*`), database path, and positive `AI_SESSION_CALL_LIMIT` validation. Loading only
+  the database path does not require provider credentials.
 - `src/__init__.py`: package marker and short package description.
 
 ### Tests and evaluation
 
 - `tests/test_api.py`: ASGI contract tests using `httpx.AsyncClient`, an in-memory
   repository, and `StubAnalyzer`. It covers health, catalog APIs, analyze/get behavior,
-  the absence of a practice API, unlimited session-call auditing, automatic character
-  fallback, 502/503 mapping, and five credential-gated live Gemini cases in
+  the absence of a practice API, session quota/auditing, automatic character fallback,
+  429/502/503 mapping, and five credential-gated live Gemini cases in
   `LiveGeminiApiTests`.
 - `tests/test_analyzer.py`: mocked HTTP tests for Gemini request schemas, parsing/fallback,
   rate-limit backoff, character voice enforcement, and prompt injection isolation.
 - `tests/test_database.py`: save/get behavior and migration of records created before the
   scenario/action/evidence columns.
+- `tests/test_config.py`: default, override, and invalid session-call-limit configuration.
 - `tests/test_catalog.py`: catalog size, required fields, and group balance.
 - `tests/test_regression.py`: runs the labeled corpus through the offline HTTP API and
   prints the expected/actual ĐÚNG/SAI table.
@@ -216,7 +218,8 @@ legacy-schema test in `tests/test_database.py`.
   references to the three explicit frontend assets.
 - `frontend/styles.css`: mobile-first page styling, the automatic 900px+ widescreen
   layout, responsive rules, and reduced-motion behavior.
-- `frontend/app.js`: `/analyze` integration, AI-call count display, safe result rendering,
+- `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
+  handling, safe result rendering,
   voice input, cancellation, browser-local recent-message history, and the local
   recognition prompts/grading/score. It contains no local analyzer risk parser, direct
   character call, or chat UI.
@@ -324,6 +327,14 @@ auditing. Reservations no longer reject calls, `AI_SESSION_CALL_LIMIT` was remov
 configuration, and public usage objects now contain only the total `used` count. The
 frontend reports that count without presenting a remaining allowance. The AI audit table,
 analysis schema, and provider prompts did not change.
+
+On 2026-07-18, the per-session AI resource ceiling was restored. The default allowance is
+10 provider calls per cookie session and can be changed with `AI_SESSION_CALL_LIMIT`.
+Detective and character calls each consume one reservation; SQLite rejects reservations
+atomically at the ceiling, `/analyze` returns a polite 429 before contacting a provider,
+and usage responses contain both `used` and `limit`. The frontend displays the fraction
+and disables analysis at the ceiling. Existing per-call timeouts remain 12 seconds for
+the Detective and 6 seconds for the character.
 
 The recognition exercise was then integrated into the current frontend and moved fully
 out of the backend at the user's request. Its ten prompts, labels, explanations, grading,

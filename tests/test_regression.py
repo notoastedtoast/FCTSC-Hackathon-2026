@@ -69,6 +69,7 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
             settings=Settings(
                 google_api_key="test-key",
                 google_model="gemini-test",
+                ai_session_call_limit=100,
             ),
             analyzer=RegressionAnalyzer(
                 {case["text"]: case["expected"] for case in cases}

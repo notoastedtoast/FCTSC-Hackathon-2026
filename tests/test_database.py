@@ -9,6 +9,23 @@ from tests.factories import scenario_assessments
 
 
 class AnalysisRepositoryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_ai_call_reservation_enforces_session_limit(self) -> None:
+        repository = AnalysisRepository(":memory:")
+        await repository.initialize()
+
+        first = await repository.reserve_ai_call("a" * 32, "detective", 20, 2)
+        second = await repository.reserve_ai_call("a" * 32, "character", 20, 2)
+        blocked = await repository.reserve_ai_call("a" * 32, "detective", 20, 2)
+        usage, calls = await repository.get_ai_calls("a" * 32, 2)
+
+        assert first is not None
+        assert second is not None
+        self.assertEqual(first.usage.model_dump(), {"used": 1, "limit": 2})
+        self.assertEqual(second.usage.model_dump(), {"used": 2, "limit": 2})
+        self.assertIsNone(blocked)
+        self.assertEqual(usage.model_dump(), {"used": 2, "limit": 2})
+        self.assertEqual([call.kind for call in calls], ["detective", "character"])
+
     async def test_save_persists_analysis_and_returns_generated_id(self) -> None:
         repository = AnalysisRepository(":memory:")
         await repository.initialize()
