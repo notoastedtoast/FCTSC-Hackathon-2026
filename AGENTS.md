@@ -59,6 +59,7 @@ contract below records behavior that is easy to miss from schemas alone.
 | `GET /` | None | `frontend/index.html` | Registered when the file exists; it does not expose other repository files. |
 | `GET /styles.css` | None | `frontend/styles.css` | Explicit stylesheet route; no directory mount or listing. |
 | `GET /app.js` | None | `frontend/app.js` | Explicit JavaScript route; no directory mount or listing. |
+| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the four authored shell assets for offline loading; it never intercepts API routes. |
 | `GET /scamcheck-logo.png` | None | `frontend/scamcheck-logo.png` | Explicit PNG route; the repository and other frontend files are never exposed as a static directory. |
 
 All FastAPI request-validation failures use the deliberately generic 422 detail:
@@ -95,6 +96,11 @@ already have started and its audit reservation may still be counted, so the page
 that caveat and refreshes usage. A successful submission is added to a ten-item
 localStorage history; deleting that browser-local copy does not delete the SQLite
 analysis.
+
+The service worker caches `/`, `/styles.css`, `/app.js`, and `/scamcheck-logo.png` after a
+successful online visit. When the browser reports that it is offline, the page disables
+AI submission and keeps the frontend-only recognition exercise available. API responses,
+submitted text, analysis results, and session usage are never added to the offline cache.
 
 ### Catalog
 
@@ -165,7 +171,7 @@ legacy-schema test in `tests/test_database.py`.
 
 - `src/main.py`: FastAPI composition, lifespan, dependency protocols, cookie middleware,
   global validation handler, AI-call audit orchestration, HTTP routes, error translation,
-  and the four explicit frontend asset routes. Keep provider logic out of routes and SQLite
+  and the five explicit frontend asset routes. Keep provider logic out of routes and SQLite
   details out of this file.
 - `src/schemas.py`: public Pydantic request/response models, constrained IDs and text,
   catalog contracts, twelve ordered scam scenario codes, default actions, and model-level
@@ -214,15 +220,18 @@ legacy-schema test in `tests/test_database.py`.
 
 ### Commands, UI, and repository metadata
 
-- `frontend/index.html`: accessible mobile UI and recognition-exercise structure, with
-  references to the three explicit frontend assets.
+- `frontend/index.html`: accessible mobile UI, connectivity notice, and
+  recognition-exercise structure, with references to the three explicit frontend assets.
 - `frontend/styles.css`: mobile-first page styling, the automatic 900px+ widescreen
   layout, responsive rules, and reduced-motion behavior.
 - `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
   handling, safe result rendering,
   voice input, cancellation, browser-local recent-message history, and the local
-  recognition prompts/grading/score. It contains no local analyzer risk parser, direct
-  character call, or chat UI.
+  recognition prompts/grading/score. It registers the offline shell service worker and
+  disables AI submission while the browser is offline. It contains no local analyzer risk
+  parser, direct character call, or chat UI.
+- `frontend/service-worker.js`: versioned cache for the root page, stylesheet, browser
+  script, and logo only. It does not intercept or cache API requests or user data.
 - `frontend/scamcheck-logo.png`: the only standalone visual asset used by the page.
 - `README.md`: contributor overview and main commands. Keep user-facing setup here; keep
   agent-level invariants in this file.
@@ -342,6 +351,12 @@ and page-memory score now live in `frontend/app.js`; the practice routes, public
 catalog helpers, backend sample data, and API tests were removed. The exercise makes no
 network, Gemini, SQLite, cookie, or localStorage call. The analysis API, database schema,
 and provider prompts did not change.
+
+The offline continuation then added a narrowly scoped service worker for the root page,
+stylesheet, browser script, and logo. The browser reports offline state, disables Gemini
+analysis, and keeps the existing local recognition exercise usable. No API response or
+submitted text is cached; the database schema, public response shapes, and provider
+prompts did not change.
 
 ## Handoff checklist
 

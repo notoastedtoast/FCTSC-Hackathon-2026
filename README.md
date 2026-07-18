@@ -15,6 +15,10 @@ liên kết. Bố cục tự chuyển sang chế độ màn hình rộng trên m
 cột trên thiết bị di động. Bài luyện nhận biết gồm mười câu, đáp án, lời giải thích và điểm
 số đều chạy trong trình duyệt, không gọi API hay lưu vào máy chủ.
 
+Sau lần tải thành công đầu tiên, service worker lưu riêng giao diện, CSS, JavaScript và logo
+để trang cùng bài luyện nhận biết vẫn mở được khi mất mạng. Chế độ ngoại tuyến không phân
+tích tin nhắn và không lưu tạm yêu cầu AI; nút kiểm tra sẽ bật lại khi trình duyệt có kết nối.
+
 ## Chạy dự án
 
 - Đồng bộ môi trường: `uv sync`

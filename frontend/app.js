@@ -2,10 +2,10 @@ const scanStage = document.getElementById("scan-stage");
 const scanMessage = document.getElementById("scan-message");
 const scanLayer = document.getElementById("scan-layer");
 const CHECK_COOLDOWN_MS=5000,MIN_LENGTH=10,MAX_LENGTH=10000;
-const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),processingFrame=document.getElementById('processing-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultBackButton=document.getElementById('result-back-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyButton=document.getElementById('history-button'),historyOverlay=document.getElementById('history-overlay'),historyBack=document.getElementById('history-back'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
+const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),processingFrame=document.getElementById('processing-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultBackButton=document.getElementById('result-back-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyButton=document.getElementById('history-button'),historyOverlay=document.getElementById('history-overlay'),historyBack=document.getElementById('history-back'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
 const cancelCheckButton=document.getElementById('cancel-check-button'),psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
 const practiceContent=document.getElementById('practice-content'),practiceMessage=document.getElementById('practice-message'),practiceProgress=document.getElementById('practice-progress'),practiceScore=document.getElementById('practice-score'),practiceAnswerButtons=document.querySelectorAll('.practice-answer-button'),practiceFeedback=document.getElementById('practice-feedback'),practiceNextButton=document.getElementById('practice-next-button');
-let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),activeCheckController=null,sessionAtLimit=false;
+let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),activeCheckController=null,sessionAtLimit=false,isOffline=!navigator.onLine;
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
 const samples={bank:'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',delivery:'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',prize:'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.'};
 const practicePrompts=[
@@ -100,7 +100,7 @@ function updateUsage(aiUsage){
     :`Phiên này đã dùng ${aiUsage.used}/${aiUsage.limit} lượt gọi AI.`;
   updateInputState();
 }
-function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;clearButton.disabled=rawLength===0;checkButton.disabled=Boolean(activeCheckController)||sessionAtLimit||!(clean.length>=MIN_LENGTH&&!isCooldownActive());if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{if(!isCooldownActive())hideFeedback();messageInput.removeAttribute('aria-invalid')}}
+function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;clearButton.disabled=rawLength===0;checkButton.disabled=Boolean(activeCheckController)||sessionAtLimit||isOffline||!(clean.length>=MIN_LENGTH&&!isCooldownActive());if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{if(!isCooldownActive())hideFeedback();messageInput.removeAttribute('aria-invalid')}}
 function setupSpeechRecognition(){const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Bạn vẫn có thể nhập hoặc dán nội dung.';return}recognition=new SpeechRecognition();recognition.lang='vi-VN';recognition.interimResults=true;recognition.continuous=true;let finalTranscript='';recognition.onstart=()=>{isRecording=true;finalTranscript='';voiceButton.classList.add('recording');voiceButtonLabel.textContent='Tắt micro';voiceStatus.textContent='Đang ghi âm… Hãy đọc rõ nội dung tin nhắn.'};recognition.onresult=(event)=>{let interimTranscript='';for(let i=event.resultIndex;i<event.results.length;i++){const transcript=event.results[i][0].transcript;if(event.results[i].isFinal)finalTranscript+=transcript+' ';else interimTranscript+=transcript}const combined=`${finalTranscript}${interimTranscript}`.trim();if(combined){const base=messageInput.dataset.beforeVoice||'';messageInput.value=base?`${base} ${combined}`:combined;messageInput.dispatchEvent(new Event('input'))}};recognition.onerror=(event)=>{isRecording=false;voiceButton.classList.remove('recording');voiceButtonLabel.textContent='Bật micro';if(event.error==='not-allowed'||event.error==='service-not-allowed')voiceStatus.textContent='Không thể dùng micro vì quyền truy cập đã bị từ chối. Bạn vẫn có thể nhập nội dung bằng bàn phím.';else if(event.error==='no-speech')voiceStatus.textContent='Chưa nhận được giọng nói. Vui lòng thử lại và nói gần micro hơn.';else voiceStatus.textContent='Tính năng giọng nói tạm thời chưa hoạt động. Vui lòng nhập nội dung thủ công.'};recognition.onend=()=>{isRecording=false;voiceButton.classList.remove('recording');voiceButtonLabel.textContent='Bật micro';if(!voiceStatus.textContent.includes('từ chối')&&!voiceStatus.textContent.includes('tạm thời')&&!voiceStatus.textContent.includes('Chưa nhận'))voiceStatus.textContent='Đã dừng ghi âm.';delete messageInput.dataset.beforeVoice}}
 function getHistory(){
   try{
@@ -321,8 +321,29 @@ async function loadUsage(){
     const payload=await requestJson("/session/ai-calls");
     updateUsage(payload.usage);
   }catch(error){
+    if(isOffline){
+      usage.textContent='Đang ngoại tuyến. Số lượt AI sẽ được cập nhật khi có kết nối.';
+      return;
+    }
     updateUsage(null);
   }
+}
+
+function updateConnectivityState(){
+  isOffline=!navigator.onLine;
+  connectivityStatus.hidden=!isOffline;
+  if(isOffline){
+    usage.textContent='Đang ngoại tuyến. Số lượt AI sẽ được cập nhật khi có kết nối.';
+  }else{
+    usage.textContent='Đang tải số lượt gọi AI của phiên này…';
+    void loadUsage();
+  }
+  updateInputState();
+}
+
+function registerServiceWorker(){
+  if(!('serviceWorker' in navigator))return;
+  void navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
 }
 
 function setPracticeAnswersDisabled(disabled){
@@ -567,6 +588,10 @@ document.addEventListener('keydown',event=>{
 });
 checkButton.addEventListener('click',async()=>{
   const clean=normalizedValue();
+  if(isOffline){
+    showFeedback('Kiểm tra bằng AI cần kết nối mạng. Bác vẫn có thể dùng bài luyện nhận biết bên dưới.','info');
+    return;
+  }
   if(isCooldownActive()){
     updateCooldownState();
     return;
@@ -633,4 +658,6 @@ resultBackButton.addEventListener('click',()=>{
   window.scrollTo({top:0,behavior:'smooth'});
   messageInput.focus();
 });
-setupSpeechRecognition();updateInputState();renderPracticePrompt();void loadUsage();if(isCooldownActive())updateCooldownState();
+window.addEventListener('online',updateConnectivityState);
+window.addEventListener('offline',updateConnectivityState);
+setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();if(isCooldownActive())updateCooldownState();

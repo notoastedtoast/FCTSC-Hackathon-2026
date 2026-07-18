@@ -12,6 +12,7 @@ class FrontendTests(unittest.TestCase):
         page = (frontend / "index.html").read_text(encoding="utf-8")
         styles = (frontend / "styles.css").read_text(encoding="utf-8")
         script = (frontend / "app.js").read_text(encoding="utf-8")
+        service_worker = (frontend / "service-worker.js").read_text(encoding="utf-8")
 
         self.assertTrue((frontend / "scamcheck-logo.png").is_file())
         self.assertIn('href="./styles.css"', page)
@@ -24,6 +25,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('id="psychology-message"', page)
         self.assertIn('id="practice-title"', page)
         self.assertIn('id="practice-message"', page)
+        self.assertIn('id="connectivity-status"', page)
         self.assertIn('data-answer="scam"', page)
         self.assertIn('data-answer="safe"', page)
         self.assertNotIn("character-chat", page)
@@ -43,6 +45,13 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn("/links/inspect", script)
         self.assertNotIn("function detectSignals(", script)
         self.assertNotIn("function determineRisk(", script)
+        self.assertIn("navigator.serviceWorker.register('/service-worker.js')", script)
+        self.assertIn("window.addEventListener('offline',updateConnectivityState)", script)
+        self.assertIn("window.addEventListener('online',updateConnectivityState)", script)
+        self.assertIn("sessionAtLimit||isOffline", script)
+        self.assertIn('const APP_SHELL=["/","/styles.css","/app.js","/scamcheck-logo.png"]', service_worker)
+        self.assertNotIn("/analyze", service_worker)
+        self.assertNotIn("/session/ai-calls", service_worker)
 
     def test_styles_include_widescreen_layout_without_replacing_mobile_defaults(
         self,

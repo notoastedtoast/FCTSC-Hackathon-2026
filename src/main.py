@@ -43,6 +43,7 @@ FRONTEND_INDEX = FRONTEND_DIRECTORY / "index.html"
 FRONTEND_LOGO = FRONTEND_DIRECTORY / "scamcheck-logo.png"
 FRONTEND_STYLES = FRONTEND_DIRECTORY / "styles.css"
 FRONTEND_SCRIPT = FRONTEND_DIRECTORY / "app.js"
+FRONTEND_SERVICE_WORKER = FRONTEND_DIRECTORY / "service-worker.js"
 
 
 class Analyzer(Protocol):
@@ -162,6 +163,14 @@ async def frontend_styles() -> Response:
 
 async def frontend_script() -> Response:
     return Response(FRONTEND_SCRIPT.read_bytes(), media_type="text/javascript")
+
+
+async def frontend_service_worker() -> Response:
+    return Response(
+        FRONTEND_SERVICE_WORKER.read_bytes(),
+        media_type="text/javascript",
+        headers={"Service-Worker-Allowed": "/"},
+    )
 
 
 @asynccontextmanager
@@ -380,6 +389,14 @@ def create_app(
             methods=["GET"],
             include_in_schema=False,
             name="frontend-script",
+        )
+    if FRONTEND_SERVICE_WORKER.is_file():
+        app.add_api_route(
+            "/service-worker.js",
+            frontend_service_worker,
+            methods=["GET"],
+            include_in_schema=False,
+            name="frontend-service-worker",
         )
 
     return app

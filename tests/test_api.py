@@ -92,6 +92,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
             logo = await client.get("/scamcheck-logo.png")
             styles = await client.get("/styles.css")
             script = await client.get("/app.js")
+            service_worker = await client.get("/service-worker.js")
             health = await client.get("/health")
 
         self.assertEqual(page.status_code, 200)
@@ -106,6 +107,11 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(script.status_code, 200)
         self.assertIn("text/javascript", script.headers["content-type"])
         self.assertIn('requestJson("/analyze"', script.text)
+        self.assertEqual(service_worker.status_code, 200)
+        self.assertIn("text/javascript", service_worker.headers["content-type"])
+        self.assertEqual(service_worker.headers["service-worker-allowed"], "/")
+        self.assertIn('const APP_SHELL=["/"', service_worker.text)
+        self.assertNotIn("/analyze", service_worker.text)
         self.assertEqual(health.json(), {"status": "ok"})
 
     async def test_character_chat_endpoint_is_not_exposed(self) -> None:
