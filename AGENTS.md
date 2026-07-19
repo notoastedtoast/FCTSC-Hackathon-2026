@@ -394,6 +394,14 @@ message-only entries. Legacy entries clearly show that no saved result is availa
 still be rechecked. No result is regenerated, and the database schema, public response
 shapes, provider prompts, and offline rules did not change.
 
+The unstable-connection flow later stopped treating an online request failure as a silent
+offline result. The browser now warns the user to check Wi-Fi or mobile data, keeps the
+composer draft and interrupted analysis text in tab-scoped `sessionStorage`, probes the
+existing `/health` endpoint, and automatically resumes the saved analysis after the
+server is reachable again. An intentionally offline submission still uses the existing
+preliminary on-device analyzer. No API, database, provider prompt, or public response
+shape changed.
+
 ## Handoff checklist
 
 Before completing a change:
