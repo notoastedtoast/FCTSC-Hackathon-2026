@@ -59,8 +59,7 @@ contract below records behavior that is easy to miss from schemas alone.
 | `GET /` | None | `frontend/index.html` | Registered when the file exists; it does not expose other repository files. |
 | `GET /styles.css` | None | `frontend/styles.css` | Explicit stylesheet route; no directory mount or listing. |
 | `GET /app.js` | None | `frontend/app.js` | Explicit JavaScript route; no directory mount or listing. |
-| `GET /offline-analyzer.js` | None | `frontend/offline-analyzer.js` | Conservative browser-only fallback used when the browser reports no connection. |
-| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the five authored shell assets for offline loading; it never intercepts API routes. |
+| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the four authored shell assets for loading the interface; it never intercepts API routes. |
 | `GET /scamcheck-logo.png` | None | `frontend/scamcheck-logo.png` | Explicit PNG route; the repository and other frontend files are never exposed as a static directory. |
 
 All FastAPI request-validation failures use the deliberately generic 422 detail:
@@ -105,22 +104,20 @@ online/offline mode. “Xem kết quả” converts that snapshot into the exist
 renderer without regenerating it; legacy message-only entries remain supported but clearly
 show that no result was saved.
 
-The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app.js`, and
-`/scamcheck-logo.png` after a successful online visit. When the browser reports that it is
-offline, `offline-analyzer.js` performs a conservative rule-based assessment on the device
-and labels it as preliminary. It does not call Gemini, consume quota, write SQLite, or claim
-provider accuracy. API responses, submitted text, analysis results, and session usage are
-never added to the offline cache. A zero-signal offline result must still warn that it
-cannot establish safety.
+The service worker caches `/`, `/styles.css`, `/app.js`, and `/scamcheck-logo.png` after a
+successful online visit. It never caches API responses, submitted text, analysis results,
+or session usage. When the browser reports no connection, the frontend does not analyze
+the message locally: it disables submission and asks the user to reconnect and try again.
+If connectivity is lost during analysis, the waiting state ends with the same connection
+error; the composer draft remains in tab-scoped `sessionStorage` for a manual retry.
 
 ### Catalog
 
 - The four required scam groups and twelve authored records live in
   `src/data/scam_types.json`; do not duplicate a client-side catalog.
 - `src/catalog.py` validates catalog data at import and owns filtering and detail lookup.
-- Online link and message assessment belongs to the provider-backed `/analyze` call. The
-  browser's offline analyzer is a deliberately limited fallback and must not alter online
-  provider results.
+- Link and message assessment belongs only to the provider-backed `/analyze` call. The
+  browser must not produce a local risk assessment while offline.
 
 ### Frontend recognition exercise
 
@@ -183,7 +180,7 @@ legacy-schema test in `tests/test_database.py`.
 
 - `src/main.py`: FastAPI composition, lifespan, dependency protocols, cookie middleware,
   global validation handler, AI-call audit orchestration, HTTP routes, error translation,
-  and the six explicit frontend asset routes. Keep provider logic out of routes and SQLite
+  and the five explicit frontend asset routes. Keep provider logic out of routes and SQLite
   details out of this file.
 - `src/schemas.py`: public Pydantic request/response models, constrained IDs and text,
   catalog contracts, twelve ordered scam scenario codes, default actions, and model-level
@@ -224,7 +221,7 @@ legacy-schema test in `tests/test_database.py`.
   messages, including the four named library groups and prompt-injection attempts.
 - `tests/test_frontend.py`: validates that the root page calls the analysis and usage
   APIs online; renders Detective/Cô tâm lý separately; keeps the balanced practice dataset
-  and grading in the browser; wires the explicitly preliminary offline analyzer; and keeps
+  and grading in the browser; verifies connection errors do not trigger local analysis; and keeps
   analysis, local history, and practice in separate hash-routed views.
 - `tests/factories.py`: canonical ordered scenario builders shared by API/analyzer/database
   tests. Use these instead of hand-building a partial scenario matrix.
@@ -243,12 +240,9 @@ legacy-schema test in `tests/test_database.py`.
   handling, safe result rendering,
   voice input, cancellation, browser-local recent-message history, and the local
   recognition prompts/grading/score. It registers the offline shell service worker and
-  routes offline submissions through the local analyzer, owns hash-based view switching,
-  and supports reusing a history item in the composer. It contains no direct character API
-  call or chat UI.
-- `frontend/offline-analyzer.js`: conservative, browser-only rules that return a compatible
-  preliminary risk result without network, quota, cookie, or database access. It is not
-  used to override a Gemini result.
+  rejects analysis while disconnected, owns hash-based view switching, and supports
+  reusing a history item in the composer. It contains no direct character API call, chat
+  UI, or offline risk engine.
 - `frontend/service-worker.js`: versioned cache for the root page, stylesheet, browser
   scripts, and logo only. It does not intercept or cache API requests or user data.
 - `frontend/scamcheck-logo.png`: the only standalone visual asset used by the page.
@@ -371,12 +365,13 @@ catalog helpers, backend sample data, and API tests were removed. The exercise m
 network, Gemini, SQLite, cookie, or localStorage call. The analysis API, database schema,
 and provider prompts did not change.
 
-The offline continuation first added a narrowly scoped service worker, then was clarified
-by the user to require actual message analysis without connectivity. The browser now uses
-a conservative local rules engine only while offline and clearly labels its output as
-preliminary; online analysis remains provider-backed and authoritative. No API response or
-submitted text is cached, and offline results do not consume quota or reach SQLite. The
-database schema, public response shapes, and provider prompts did not change.
+The offline continuation first added a narrowly scoped service worker and later a
+conservative local rules engine. On 2026-07-19, the local assessment was removed: an
+offline submission now shows a connection error, and losing connectivity during analysis
+ends the waiting state with an instruction to reconnect and retry manually. The service
+worker still caches only the authored interface shell. No API response or submitted text
+is cached, and the database schema, public response shapes, and provider prompts did not
+change.
 
 The later UI/UX refactor replaced the stacked analysis/practice page and history overlay
 with a persistent three-item top navigation. Analysis, browser-local history, and practice
@@ -395,12 +390,10 @@ still be rechecked. No result is regenerated, and the database schema, public re
 shapes, provider prompts, and offline rules did not change.
 
 The unstable-connection flow later stopped treating an online request failure as a silent
-offline result. The browser now warns the user to check Wi-Fi or mobile data, keeps the
-composer draft and interrupted analysis text in tab-scoped `sessionStorage`, probes the
-existing `/health` endpoint, and automatically resumes the saved analysis after the
-server is reachable again. An intentionally offline submission still uses the existing
-preliminary on-device analyzer. No API, database, provider prompt, or public response
-shape changed.
+offline result. It initially stored interrupted analysis state and automatically resumed
+after probing `/health`; the 2026-07-19 change above replaced that behavior with an explicit
+error and manual retry while preserving only the ordinary composer draft. No API, database,
+provider prompt, or public response shape changed.
 
 ## Handoff checklist
 
