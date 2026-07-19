@@ -1,4 +1,4 @@
-const CACHE_NAME="scamcheck-shell-v6";
+const CACHE_NAME="scamcheck-shell-v7";
 const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app.js","/scamcheck-logo.png"];
 
 self.addEventListener("install",event=>{
@@ -28,22 +28,15 @@ self.addEventListener("fetch",event=>{
   const url=new URL(request.url);
   if(url.origin!==self.location.origin||!APP_SHELL.includes(url.pathname))return;
 
-  if(url.pathname==="/"){
-    event.respondWith(
-      fetch(request)
-        .then(response=>{
-          if(response.ok){
-            const copy=response.clone();
-            void caches.open(CACHE_NAME).then(cache=>cache.put("/",copy));
-          }
-          return response;
-        })
-        .catch(()=>caches.match("/"))
-    );
-    return;
-  }
-
   event.respondWith(
-    caches.match(request).then(cached=>cached||fetch(request))
+    fetch(request)
+      .then(response=>{
+        if(response.ok){
+          const copy=response.clone();
+          void caches.open(CACHE_NAME).then(cache=>cache.put(request,copy));
+        }
+        return response;
+      })
+      .catch(()=>caches.match(request))
   );
 });

@@ -80,6 +80,9 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
         self.assertIn('"/offline-analyzer.js"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v7"', service_worker)
+        self.assertIn("fetch(request)", service_worker)
+        self.assertIn(".catch(()=>caches.match(request))", service_worker)
         self.assertNotIn("/analyze", service_worker)
         self.assertNotIn("/session/ai-calls", service_worker)
 
@@ -99,6 +102,13 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn(".history-result-review", styles)
         self.assertIn(".history-status.dangerous", styles)
         self.assertIn("grid-template-columns:repeat(3,minmax(0,1fr))", styles)
+        self.assertIn(
+            ".sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))",
+            styles,
+        )
+        self.assertIn('.sample-button[data-sample="bank"]', styles)
+        self.assertIn('.sample-button[data-sample="delivery"]', styles)
+        self.assertIn('.sample-button[data-sample="prize"]', styles)
         self.assertIn("@media (max-width: 620px)", styles)
 
     def test_practice_dataset_and_grading_live_only_in_frontend(self) -> None:

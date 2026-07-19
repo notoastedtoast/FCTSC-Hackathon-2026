@@ -6,6 +6,7 @@ const messageInput=document.getElementById('message'),clearButton=document.getEl
 const cancelCheckButton=document.getElementById('cancel-check-button'),psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
 const practiceContent=document.getElementById('practice-content'),practiceMessage=document.getElementById('practice-message'),practiceProgress=document.getElementById('practice-progress'),practiceScore=document.getElementById('practice-score'),practiceAnswerButtons=document.querySelectorAll('.practice-answer-button'),practiceFeedback=document.getElementById('practice-feedback'),practiceNextButton=document.getElementById('practice-next-button');
 const navLinks=document.querySelectorAll('.nav-link[data-view]'),pageViews=document.querySelectorAll('[data-view-panel]');
+const toolsColumn=document.querySelector('.tools-column'),mobileQuickCards=document.querySelectorAll('.quick-input-card,.sample-card'),mobileLayoutQuery=window.matchMedia('(max-width: 620px)');
 let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),activeCheckController=null,sessionAtLimit=false,isOffline=!navigator.onLine,resultReturnView='analyze';
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
 const samples={bank:'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',delivery:'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',prize:'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.'};
@@ -73,6 +74,17 @@ const practicePrompts=[
 ];
 const normalizedValue=()=>messageInput.value.replace(/\s+/g,' ').trim();
 const viewTitles={analyze:'Kiểm tra',history:'Lịch sử',practice:'Luyện tập'};
+
+function syncQuickInputLayout(){
+  if(mobileLayoutQuery.matches){
+    mobileQuickCards.forEach(card=>checkButton.before(card));
+    return;
+  }
+  mobileQuickCards.forEach(card=>toolsColumn.append(card));
+}
+
+syncQuickInputLayout();
+mobileLayoutQuery.addEventListener('change',syncQuickInputLayout);
 
 function viewFromHash(){
   const candidate=window.location.hash.slice(1);
