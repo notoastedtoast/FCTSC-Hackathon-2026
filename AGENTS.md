@@ -93,11 +93,13 @@ Provider evidence and raw submitted text are rendered with DOM text nodes, never
 links or HTML. The page also reads `/session/ai-calls` to display authoritative
 `used`/`limit` usage and disables submission after the session reaches its ceiling.
 
-The cancel button aborts only the browser's wait. The provider/database operation may
-already have started and its audit reservation may still be counted, so the page states
-that caveat and refreshes usage. A successful submission is added to a ten-item
-localStorage history; deleting that browser-local copy does not delete the SQLite
-analysis. The persistent top navigation uses `#analyze`, `#history`, and `#practice` views.
+The browser keeps the composer visible and disables its submit button while a check is in
+progress; it has no separate processing animation or browser-cancel control. A successful
+submission is added to a ten-item localStorage history; deleting that browser-local copy
+does not delete the SQLite analysis. The persistent top navigation uses `#analyze`,
+`#history`, and `#practice` views. The logo is presentational rather than a navigation link,
+and the result header has no extra “check another message” button. A “Trở lại lịch sử”
+button appears only while reviewing a saved history result.
 History is a dedicated page rather than a dialog; its “Kiểm tra lại” action copies a local
 message into the analysis composer without calling an API. New history entries store a
 bounded snapshot of the displayed risk, reasoning, evidence, actions, Cô tâm lý text, and
@@ -234,14 +236,14 @@ legacy-schema test in `tests/test_database.py`.
 ### Commands, UI, and repository metadata
 
 - `frontend/index.html`: accessible application shell with persistent top navigation,
-  separate analysis/history/practice views, result/processing states, connectivity notice,
+  separate analysis/history/practice views, result state, connectivity notice,
   and references to the browser assets.
 - `frontend/styles.css`: mobile-first page styling, the automatic 900px+ widescreen
   analysis workspace, responsive navigation and result/history/practice layouts, focus
   states, and reduced-motion behavior.
 - `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
   handling, safe result rendering,
-  voice input, cancellation, browser-local recent-message history, and the local
+  voice input, browser-local recent-message history, and the local
   recognition prompts/grading/score. It registers the offline shell service worker and
   routes offline submissions through the local analyzer, owns hash-based view switching,
   and supports reusing a history item in the composer. It contains no direct character API
@@ -393,6 +395,16 @@ existing full result screen without an API call, and keeps compatibility with ol
 message-only entries. Legacy entries clearly show that no saved result is available and can
 still be rechecked. No result is regenerated, and the database schema, public response
 shapes, provider prompts, and offline rules did not change.
+
+The result-flow simplification then removed the full-page scan/loading animation, its
+cancel control, and the extra result-header navigation button. The composer stays visible
+and its submit button is disabled while the existing online/offline analysis completes;
+the persistent top “Kiểm tra” navigation reopens the composer after a result. The logo is
+now presentational and no longer links to the analysis view. No API, persistence, provider
+prompt, offline rule, or public response shape changed. No sub-agents were used because
+the markup, client request state, navigation behavior, styles, and frontend contract tests
+formed one small UI flow. A later follow-up restored only a history-specific return button;
+normal analysis results still have no extra result-header action.
 
 ## Handoff checklist
 

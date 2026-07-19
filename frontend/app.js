@@ -1,12 +1,9 @@
-const scanStage = document.getElementById("scan-stage");
-const scanMessage = document.getElementById("scan-message");
-const scanLayer = document.getElementById("scan-layer");
 const CHECK_COOLDOWN_MS=5000,MIN_LENGTH=10,MAX_LENGTH=10000;
-const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),processingFrame=document.getElementById('processing-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultBackButton=document.getElementById('result-back-button'),resultContextLabel=document.getElementById('result-context-label'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
-const cancelCheckButton=document.getElementById('cancel-check-button'),psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
+const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultContextLabel=document.getElementById('result-context-label'),historyReturnButton=document.getElementById('history-return-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
+const psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
 const practiceContent=document.getElementById('practice-content'),practiceMessage=document.getElementById('practice-message'),practiceProgress=document.getElementById('practice-progress'),practiceScore=document.getElementById('practice-score'),practiceAnswerButtons=document.querySelectorAll('.practice-answer-button'),practiceFeedback=document.getElementById('practice-feedback'),practiceNextButton=document.getElementById('practice-next-button');
 const navLinks=document.querySelectorAll('.nav-link[data-view]'),pageViews=document.querySelectorAll('[data-view-panel]');
-let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),activeCheckController=null,sessionAtLimit=false,isOffline=!navigator.onLine,resultReturnView='analyze';
+let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),isAnalyzing=false,sessionAtLimit=false,isOffline=!navigator.onLine;
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
 const samples={bank:'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',delivery:'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',prize:'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.'};
 const practicePrompts=[
@@ -100,6 +97,12 @@ function switchView(view,{focus=false}={}){
   }
 }
 
+function showComposerFrame(){
+  resultFrame.classList.remove('active');
+  inputFrame.style.display='block';
+  updateInputState();
+}
+
 function showFeedback(message,type='error'){feedback.textContent=message;feedback.className=`feedback ${type}`}
 function hideFeedback(){feedback.textContent='';feedback.className='feedback'}
 function getCooldownRemaining(){return Math.max(0,CHECK_COOLDOWN_MS-(Date.now()-lastCheckAt))}
@@ -129,7 +132,7 @@ function updateUsage(aiUsage){
     :`Phiên này đã dùng ${aiUsage.used}/${aiUsage.limit} lượt gọi AI.`;
   updateInputState();
 }
-function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;clearButton.disabled=rawLength===0;checkButton.disabled=Boolean(activeCheckController)||(!isOffline&&sessionAtLimit)||!(clean.length>=MIN_LENGTH&&!isCooldownActive());if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{if(!isCooldownActive())hideFeedback();messageInput.removeAttribute('aria-invalid')}}
+function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;clearButton.disabled=rawLength===0;checkButton.disabled=isAnalyzing||(!isOffline&&sessionAtLimit)||!(clean.length>=MIN_LENGTH&&!isCooldownActive());if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{if(!isCooldownActive())hideFeedback();messageInput.removeAttribute('aria-invalid')}}
 function setupSpeechRecognition(){const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Bạn vẫn có thể nhập hoặc dán nội dung.';return}recognition=new SpeechRecognition();recognition.lang='vi-VN';recognition.interimResults=true;recognition.continuous=true;let finalTranscript='';recognition.onstart=()=>{isRecording=true;finalTranscript='';voiceButton.classList.add('recording');voiceButtonLabel.textContent='Tắt micro';voiceStatus.textContent='Đang ghi âm… Hãy đọc rõ nội dung tin nhắn.'};recognition.onresult=(event)=>{let interimTranscript='';for(let i=event.resultIndex;i<event.results.length;i++){const transcript=event.results[i][0].transcript;if(event.results[i].isFinal)finalTranscript+=transcript+' ';else interimTranscript+=transcript}const combined=`${finalTranscript}${interimTranscript}`.trim();if(combined){const base=messageInput.dataset.beforeVoice||'';messageInput.value=base?`${base} ${combined}`:combined;messageInput.dispatchEvent(new Event('input'))}};recognition.onerror=(event)=>{isRecording=false;voiceButton.classList.remove('recording');voiceButtonLabel.textContent='Bật micro';if(event.error==='not-allowed'||event.error==='service-not-allowed')voiceStatus.textContent='Không thể dùng micro vì quyền truy cập đã bị từ chối. Bạn vẫn có thể nhập nội dung bằng bàn phím.';else if(event.error==='no-speech')voiceStatus.textContent='Chưa nhận được giọng nói. Vui lòng thử lại và nói gần micro hơn.';else voiceStatus.textContent='Tính năng giọng nói tạm thời chưa hoạt động. Vui lòng nhập nội dung thủ công.'};recognition.onend=()=>{isRecording=false;voiceButton.classList.remove('recording');voiceButtonLabel.textContent='Bật micro';if(!voiceStatus.textContent.includes('từ chối')&&!voiceStatus.textContent.includes('tạm thời')&&!voiceStatus.textContent.includes('Chưa nhận'))voiceStatus.textContent='Đã dừng ghi âm.';delete messageInput.dataset.beforeVoice}}
 function getHistory(){
   try{
@@ -342,10 +345,8 @@ function renderHistory(){
     reuseButton.addEventListener('click',()=>{
       messageInput.value=item.message;
       messageInput.dispatchEvent(new Event('input'));
-      processingFrame.classList.remove('active');
       resultFrame.classList.remove('active');
       inputFrame.style.display='block';
-      resultReturnView='analyze';
       window.location.hash='analyze';
       switchView('analyze');
       window.setTimeout(()=>messageInput.focus(),0);
@@ -418,23 +419,6 @@ function confirmDeleteSelectedHistory(){
   const historyNav=document.querySelector('.nav-link[data-view="history"]');
   historyNav?.focus();
 }
-
-function startScanAnimation(message){
-  if(!scanStage||!scanMessage||!scanLayer){
-    console.warn("Không tìm thấy vùng hiệu ứng scan.");
-    return;
-  }
-  scanMessage.textContent=message;
-  scanStage.classList.remove('scan-complete','is-scanning');
-  void scanStage.offsetWidth;
-  scanStage.classList.add('is-scanning');
-}
-
-function stopScanAnimation(){
-  scanStage.classList.remove('is-scanning');
-  scanStage.classList.add('scan-complete');
-}
-
 
 function apiErrorMessage(statusCode,detail){
   if(statusCode===429)return 'Phiên này đã dùng hết lượt kiểm tra AI. Bác vui lòng xem lại các kết quả đã lưu.';
@@ -683,9 +667,8 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
   const detective=payload.detective;
   const risk=riskPresentations[detective.risk_level]||riskPresentations.suspicious;
 
-  resultReturnView=fromHistory?'history':'analyze';
   resultContextLabel.textContent=fromHistory?'Kết quả đã lưu':'Phân tích hoàn tất';
-  resultBackButton.textContent=fromHistory?'Trở về lịch sử':'Kiểm tra tin khác';
+  historyReturnButton.hidden=!fromHistory;
 
   riskCard.className=`risk-card ${risk.className}`;
   riskLabel.textContent=payload.offline&&detective.risk_level==='safe'
@@ -701,7 +684,6 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
   renderRecommendations(detective.actions||[]);
   renderPsychology(payload);
 
-  processingFrame.classList.remove('active');
   inputFrame.style.display='none';
   resultFrame.classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});
@@ -717,6 +699,9 @@ deleteConfirmButton.addEventListener('click',confirmDeleteSelectedHistory);
 deleteConfirmModal.addEventListener('click',event=>{if(event.target===deleteConfirmModal)closeDeleteConfirmation()});
 navLinks.forEach(link=>link.addEventListener('click',event=>{
   const target=link.dataset.view;
+  if(target==='analyze'&&resultFrame.classList.contains('active')){
+    showComposerFrame();
+  }
   if(window.location.hash===`#${target}`){
     event.preventDefault();
     switchView(target,{focus:true});
@@ -762,13 +747,9 @@ checkButton.addEventListener('click',async()=>{
   }
 
   const submittedText=messageInput.value.trim();
-  const controller=new AbortController();
-  activeCheckController=controller;
+  isAnalyzing=true;
   checkButton.disabled=true;
-  inputFrame.style.display='none';
   resultFrame.classList.remove('active');
-  startScanAnimation(submittedText);
-  processingFrame.classList.add('active');
 
   try{
     let payload;
@@ -780,51 +761,31 @@ checkButton.addEventListener('click',async()=>{
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({text:submittedText,source:'web'}),
-          signal:controller.signal
         });
       }catch(error){
-        if(error.name==='AbortError'||Number.isInteger(error.status))throw error;
+        if(Number.isInteger(error.status))throw error;
         payload=ScamCheckOffline.analyze(submittedText);
       }
     }
-    if(activeCheckController!==controller)return;
-    stopScanAnimation();
     saveHistory(submittedText,payload);
     lastCheckAt=Date.now();
     sessionStorage.setItem('scamcheck-last-check-at',String(lastCheckAt));
     if(payload.usage)updateUsage(payload.usage);
     showResultFrame(submittedText,payload);
   }catch(error){
-    stopScanAnimation();
-    processingFrame.classList.remove('active');
-    inputFrame.style.display='block';
-    if(error.name==='AbortError'){
-      showFeedback('Đã dừng chờ kết quả. Nếu lượt AI đã bắt đầu, lượt đó vẫn có thể được tính.','info');
-    }else{
-      showFeedback(Number.isInteger(error.status)?error.message:'Không thể kết nối tới máy chủ.');
-    }
+    showFeedback(Number.isInteger(error.status)?error.message:'Không thể kết nối tới máy chủ.');
     void loadUsage();
     messageInput.focus();
   }finally{
-    if(activeCheckController===controller)activeCheckController=null;
+    isAnalyzing=false;
     updateCooldownState();
   }
 });
-cancelCheckButton.addEventListener('click',()=>{
-  if(activeCheckController)activeCheckController.abort();
-});
-resultBackButton.addEventListener('click',()=>{
+historyReturnButton.addEventListener('click',()=>{
   resultFrame.classList.remove('active');
   inputFrame.style.display='block';
-  if(resultReturnView==='history'){
-    resultReturnView='analyze';
-    window.location.hash='history';
-    switchView('history',{focus:true});
-    return;
-  }
-  updateInputState();
-  window.scrollTo({top:0,behavior:'smooth'});
-  messageInput.focus();
+  window.location.hash='history';
+  switchView('history',{focus:true});
 });
 window.addEventListener('online',updateConnectivityState);
 window.addEventListener('offline',updateConnectivityState);

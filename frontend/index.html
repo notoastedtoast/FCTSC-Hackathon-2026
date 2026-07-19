@@ -11,9 +11,9 @@
   <div class="app-shell">
     <header class="site-header">
       <div class="brand-row">
-        <a class="brand-link" href="#analyze" aria-label="ScamCheck - về trang kiểm tra">
+        <div class="brand-mark">
           <img class="logo" src="./scamcheck-logo.png" alt="ScamCheck" />
-        </a>
+        </div>
         <p class="header-note">Bình tĩnh kiểm tra trước khi hành động</p>
       </div>
 
@@ -112,26 +112,10 @@
         </div>
       </section>
 
-      <section id="processing-frame" class="processing-frame" aria-live="polite">
-        <div class="processing-card">
-          <div id="scan-stage" class="scan-stage" aria-label="Nội dung tin nhắn đang được quét">
-            <div id="scan-message" class="scan-message"></div>
-            <div id="scan-layer" class="scan-layer" aria-hidden="true"></div>
-          </div>
-          <div class="progress-visual" aria-hidden="true"><div class="progress-ring"></div><div class="progress-dot">✓</div></div>
-          <h1>Đang kiểm tra tin nhắn</h1>
-          <p class="analysis-label">Xin chờ một chút trong khi ScamCheck đánh giá các dấu hiệu.</p>
-          <button id="cancel-check-button" class="cancel-button" type="button">
-            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7.4 6 6 7.4 10.6 12 6 16.6 7.4 18 12 13.4 16.6 18 18 16.6 13.4 12 18 7.4 16.6 6 12 10.6 7.4 6Z"/></svg>
-            <span>Dừng chờ kết quả</span>
-          </button>
-        </div>
-      </section>
-
       <section id="result-frame" class="result-frame" aria-live="polite">
         <header class="result-header">
           <div><p id="result-context-label" class="eyebrow">Phân tích hoàn tất</p><h1>Kết quả kiểm tra</h1></div>
-          <button id="result-back-button" class="result-back-button" type="button">Kiểm tra tin khác</button>
+          <button id="history-return-button" class="history-return-button" type="button" hidden>Trở lại lịch sử</button>
         </header>
 
         <section id="risk-card" class="risk-card suspicious">
