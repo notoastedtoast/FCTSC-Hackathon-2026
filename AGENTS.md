@@ -53,7 +53,7 @@ contract below records behavior that is easy to miss from schemas alone.
 | `GET /health` | None | `{"status":"ok"}` | Does not call Gemini or SQLite. |
 | `GET /scam-types` | Optional `group`: `fake_bank`, `fake_police`, `prize`, or `fake_delivery` | Array of 12 authored `ScamType` records, filtered when requested | Reads validated process-local data only; every group has three entries. |
 | `GET /scam-types/{scam_type_id}` | Lowercase hyphenated catalog ID | One `ScamType` with name, description, example message, and group | Returns 404 when absent and 422 for a malformed ID. |
-| `POST /analyze` | JSON `text` (1–10,000 nonblank characters), optional `source` (up to 100 characters) | `AnalyzeResponse`: random analysis `id`, `detective`, optional `character`, optional `character_notice`, and `usage` | Atomically reserves and audits one `detective` call under the configured session limit. A suspicious/dangerous result may reserve a second `character` call. Returns 429 without calling Gemini when no slot remains, 502 for Detective provider failure, and 503 for repository failure. The analysis is saved only after generation completes. |
+| `POST /analyze` | JSON `text` (1–10,000 nonblank characters), optional `source` (up to 100 characters), and optional `X-ScamCheck-Request-ID` header | `AnalyzeResponse`: random analysis `id`, `detective`, optional `character`, optional `character_notice`, and `usage` | A valid request ID makes reconnect retries idempotent within the cookie session: a completed retry replays the original response, a still-pending retry returns 409 with `Retry-After`, and reusing the ID for different content returns 409. A newly claimed request atomically reserves and audits one `detective` call under the configured session limit. A suspicious/dangerous result may reserve a second `character` call. Returns 429 without calling Gemini when no slot remains, 502 for Detective provider failure, and 503 for repository failure. The analysis is saved only after generation completes. |
 | `GET /analyses/{analysis_id}` | A 32-character lowercase hexadecimal ID | `StoredAnalysis` | Returns 404 when absent and 422 for a malformed ID. The random ID acts as a bearer capability; this route is not session-owned. Stored responses do not include the generated character reply. |
 | `GET /session/ai-calls` | HttpOnly session cookie set by middleware | `AiCallHistory` with authoritative `used`/`limit` usage and ordered calls | Returns audit metadata for the current cookie session only. It does not return analysis ownership. |
 | `GET /` | None | `frontend/index.html` | Registered when the file exists; it does not expose other repository files. |
@@ -73,18 +73,21 @@ handler specific to `/analyze`; it also handles path parameters.
 
 1. `session_cookie_middleware` accepts a valid 32-character hex cookie or generates one.
 2. Pydantic validates `AnalyzeRequest` before route code runs.
-3. `reserve_ai_call` atomically checks the configured session limit, inserts a pending
+3. When the optional request ID is present, the repository claims its session-scoped
+   content hash before quota is used. Completed retries replay the saved response and
+   pending retries wait without another provider call.
+4. `reserve_ai_call` atomically checks the configured session limit, inserts a pending
    `detective` audit row when a slot remains, and returns authoritative `used`/`limit`
    usage. A full session receives 429 without a provider call.
-4. `ScamAnalyzer.analyze` requests structured Gemini JSON. Malformed provider content
+5. `ScamAnalyzer.analyze` requests structured Gemini JSON. Malformed provider content
    becomes a conservative fallback; timeouts and HTTP failures become `AnalysisError`.
-5. The validated provider `risk_level` becomes the Detective risk unchanged. If malformed
+6. The validated provider `risk_level` becomes the Detective risk unchanged. If malformed
    provider content triggers the conservative fallback, its risk is `suspicious`.
-6. Suspicious/dangerous results may invoke `CALMING_GUIDE`. Character failure is optional
+7. Suspicious/dangerous results may invoke `CALMING_GUIDE`. Character failure is optional
    here: `CharacterError` and provider-adapter `ValueError` are isolated, so the Detective
    result remains successful and `character_notice` is returned.
-7. The repository saves the submitted text and validated `ScamAnalysis`, and the route
-   returns the random record ID.
+8. The repository saves the submitted text and validated `ScamAnalysis`. For an
+   idempotent request, the analysis and replayable response are committed atomically.
 
 When online, the frontend makes one checking request to `/analyze` and renders the returned
 `detective` and `character`/`character_notice` in separate panels. It never calls Cô tâm lý
@@ -94,9 +97,12 @@ links or HTML. The page also reads `/session/ai-calls` to display authoritative
 `used`/`limit` usage and disables submission after the session reaches its ceiling.
 
 The browser keeps the composer visible and disables its submit button while a check is in
-progress; it has no separate processing animation or browser-cancel control. A successful
-submission is added to a ten-item localStorage history; deleting that browser-local copy
-does not delete the SQLite analysis. The persistent top navigation uses `#analyze`,
+progress; it has no separate processing animation or browser-cancel control. Online
+requests persist a random request ID with the pending message in tab-scoped storage before
+calling the API. Reconnect retries reuse that ID, so completed work does not consume quota
+twice; a pending server response is polled without replacing it with an offline result. A
+successful submission is added to a ten-item localStorage history; deleting that
+browser-local copy does not delete the SQLite analysis. The persistent top navigation uses `#analyze`,
 `#history`, and `#practice` views. The logo is presentational rather than a navigation link,
 and the result header has no extra “check another message” button. A “Trở lại lịch sử”
 button appears only while reviewing a saved history result.
@@ -167,6 +173,9 @@ creation and the migration path for older analysis tables.
   data, actions, provider risk level, scenario matrix, and timestamp.
 - `ai_calls` stores random call ID, opaque session ID, call kind, input length, pending or
   final success status, summary, and timestamp.
+- `analysis_requests` stores a session-scoped random request ID, a content hash, pending or
+  completed status, and the completed response JSON. It does not duplicate raw submitted
+  text. Its response and `analyses` row are committed in one transaction.
 - There is intentionally no character-chat endpoint, request schema, conversation table,
   or transcript storage.
 - AI-call quota reservation uses `BEGIN IMMEDIATE`, making the limit-check-and-insert
@@ -201,7 +210,8 @@ legacy-schema test in `tests/test_database.py`.
   contract used for the optional one-time `/analyze` response.
 - `src/database.py`: SQLite initialization/migrations, analysis serialization,
   cryptographically random IDs, atomic AI-call reservations, audit completion/history,
-  async thread handoff for file databases, and the shared in-memory test connection.
+  idempotent request claiming/replay, async thread handoff for file databases, and the
+  shared in-memory test connection.
 - `src/config.py`: `.env` loading, provider aliases (`GOOGLE_*` preferred over legacy
   `GEMINI_*`), database path, and positive `AI_SESSION_CALL_LIMIT` validation. Loading only
   the database path does not require provider credentials.
@@ -217,7 +227,7 @@ legacy-schema test in `tests/test_database.py`.
 - `tests/test_analyzer.py`: mocked HTTP tests for Gemini request schemas, parsing/fallback,
   rate-limit backoff, character voice enforcement, and prompt injection isolation.
 - `tests/test_database.py`: save/get behavior and migration of records created before the
-  scenario/action/evidence columns.
+  scenario/action/evidence columns, plus session-scoped idempotency claims.
 - `tests/test_config.py`: default, override, and invalid session-call-limit configuration.
 - `tests/test_catalog.py`: catalog size, required fields, and group balance.
 - `tests/test_regression.py`: runs the labeled corpus through the offline HTTP API and
@@ -403,6 +413,18 @@ existing `/health` endpoint, and automatically resumes the saved analysis after 
 server is reachable again. An intentionally offline submission still uses the existing
 preliminary on-device analyzer. No API, database, provider prompt, or public response
 shape changed.
+
+On 2026-07-19, the conflicting offline/reconnect merge was repaired around the existing
+no-processing-screen UI. Pending browser requests now retain a random request ID and reuse
+it after reconnect. `/analyze` accepts that optional header, while SQLite claims it per
+cookie session and atomically stores the completed response with the analysis; repeated
+completed requests replay without another provider call and pending duplicates return a
+retryable 409. A new `analysis_requests` table was added through `_create_schema`. The
+service worker now uses canonical shell cache keys, awaits cache refresh work, serves
+cached assets across query strings and falls back for unsuccessful root responses. The
+offline rules gained accentless Vietnamese, broader domain, and English OTP coverage while
+requiring more than a lone low-weight signal for `suspicious`. The provider prompt and
+public response shape did not change.
 
 ## Handoff checklist
 

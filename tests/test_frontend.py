@@ -6,6 +6,18 @@ import unittest
 
 
 class FrontendTests(unittest.TestCase):
+    def test_every_required_javascript_element_exists_in_the_page(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        page = (root / "frontend" / "index.html").read_text(encoding="utf-8")
+        script = (root / "frontend" / "app.js").read_text(encoding="utf-8")
+
+        page_ids = set(re.findall(r'\bid=["\']([^"\']+)["\']', page))
+        required_ids = set(
+            re.findall(r'document\.getElementById\(["\']([^"\']+)["\']\)', script)
+        )
+
+        self.assertEqual(required_ids - page_ids, set())
+
     def test_static_page_calls_backend_and_keeps_results_separate(self) -> None:
         root = Path(__file__).resolve().parent.parent
         frontend = root / "frontend"
@@ -59,9 +71,12 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("detective.indicator_evidence", script)
         self.assertIn("detective.actions", script)
         self.assertNotIn("activeCheckController", script)
+        self.assertIn("isAnalyzing=false", script)
         self.assertNotIn("startScanAnimation", script)
+        self.assertNotIn("stopScanAnimation", script)
         self.assertNotIn("processingFrame", script)
         self.assertNotIn("resultBackButton", script)
+        self.assertNotIn("cancelCheckButton", script)
         self.assertIn("historyReturnButton.hidden=!fromHistory", script)
         self.assertIn("historyReturnButton.addEventListener('click'", script)
         self.assertNotIn("/links/inspect", script)
@@ -72,6 +87,8 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("window.addEventListener('online',updateConnectivityState)", script)
         self.assertIn("sessionStorage.setItem(DRAFT_KEY", script)
         self.assertIn("sessionStorage.setItem(PENDING_ANALYSIS_KEY", script)
+        self.assertIn("'X-ScamCheck-Request-ID':requestId", script)
+        self.assertIn("requestStatus==='pending'", script)
         self.assertIn("fetch('/health',{cache:'no-store'})", script)
         self.assertIn("function resumePendingAnalysis()", script)
         self.assertIn("scheduleConnectionProbe()", script)
@@ -100,9 +117,10 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
         self.assertIn('"/offline-analyzer.js"', service_worker)
-        self.assertIn('CACHE_NAME="scamcheck-shell-v8"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v9"', service_worker)
         self.assertIn("fetch(request)", service_worker)
-        self.assertIn(".catch(()=>caches.match(request))", service_worker)
+        self.assertIn("const cacheKey=url.pathname", service_worker)
+        self.assertIn("event.waitUntil(refresh.then(", service_worker)
         self.assertNotIn("/analyze", service_worker)
         self.assertNotIn("/session/ai-calls", service_worker)
 

@@ -1,5 +1,5 @@
 const ScamCheckOffline=(()=>{
-  const URL_PATTERN=/(?:https?:\/\/[^\s]+|www\.[^\s]+|(?:bit\.ly|tinyurl\.com|t\.co|shorturl\.at)\/[^\s]+|[a-z0-9][a-z0-9-]{2,}\.(?:com|net|org|vn|xyz|top|click|site|online)(?:\/[^\s]*)?)/giu;
+  const URL_PATTERN=/(?:https?:\/\/[^\s]+|www\.[^\s]+|(?:bit\.ly|tinyurl\.com|t\.co|shorturl\.at)\/[^\s]+|[a-z0-9][a-z0-9-]{2,}\.[a-z]{2,63}(?:\/[^\s]*)?)/giu;
   const TRUSTED_URL_PATTERN=/^(?:https?:\/\/)?accounts\.google\.com(?:[/:?#]|$)/iu;
 
   function findUntrustedUrl(text){
@@ -10,11 +10,16 @@ const ScamCheckOffline=(()=>{
     })||null;
   }
 
+  function foldText(text){
+    return text.normalize('NFD').replace(/[\u0300-\u036f]/gu,'').replace(/đ/giu,'d');
+  }
+
   const RULES=[
     {
       label:'Yêu cầu mã xác thực hoặc thông tin đăng nhập',
       weight:4,
-      pattern:/(?:gửi|cung cấp|nhập|đọc|chia sẻ|tiết lộ).{0,35}(?:mã\s+otp|otp|mã\s+xác\s+(?:thực|nhận)|mật\s+khẩu|password|passcode|mã\s+pin)|(?:mã\s+otp|otp|mật\s+khẩu|password).{0,35}(?:cho\s+(?:tôi|chúng tôi)|vào\s+(?:link|liên kết)|để\s+xác\s+minh)/iu
+      pattern:/(?:gửi|cung cấp|nhập|đọc|chia sẻ|tiết lộ|send|share|provide|enter).{0,35}(?:mã\s+otp|otp|mã\s+xác\s+(?:thực|nhận)|mật\s+khẩu|password|passcode|mã\s+pin)|(?:mã\s+otp|otp|mật\s+khẩu|password).{0,35}(?:cho\s+(?:tôi|chúng tôi)|vào\s+(?:link|liên kết)|để\s+xác\s+minh|to\s+me)/iu,
+      foldedPattern:/(?:gui|cung cap|nhap|doc|chia se|tiet lo).{0,35}(?:ma\s+otp|otp|ma\s+xac\s+(?:thuc|nhan)|mat\s+khau|ma\s+pin)/iu
     },
     {
       label:'Người gửi xin mã xác thực cá nhân',
@@ -29,7 +34,8 @@ const ScamCheckOffline=(()=>{
     {
       label:'Yêu cầu chuyển tiền hoặc đóng phí',
       weight:3,
-      pattern:/(?:chuyển\s+(?:khoản|tiền)|thanh\s+toán|đóng\s+phí|nộp\s+phí|phí\s+(?:hồ\s+sơ|kích\s+hoạt|vận\s+chuyển)|mua\s+thẻ\s+(?:quà\s+tặng|gift)|gift\s*card|send\s+(?:money|payment)|wire\s+transfer|chuyển.{0,20}(?:bitcoin|usdt))/iu
+      pattern:/(?:chuyển\s+(?:khoản|tiền)|thanh\s+toán|đóng\s+phí|nộp\s+phí|phí\s+(?:hồ\s+sơ|kích\s+hoạt|vận\s+chuyển)|mua\s+thẻ\s+(?:quà\s+tặng|gift)|gift\s*card|send\s+(?:money|payment)|wire\s+transfer|chuyển.{0,20}(?:bitcoin|usdt))/iu,
+      foldedPattern:/(?:chuyen\s+(?:khoan|tien)|thanh\s+toan|dong\s+phi|nop\s+phi|phi\s+(?:ho\s+so|kich\s+hoat|van\s+chuyen)|mua\s+the\s+qua\s+tang)/iu
     },
     {
       label:'Đường dẫn cần được xác minh độc lập',
@@ -44,12 +50,14 @@ const ScamCheckOffline=(()=>{
     {
       label:'Tạo áp lực phải hành động gấp',
       weight:1,
-      pattern:/(?:ngay\s+lập\s+tức|trong\s+\d+\s*(?:phút|giờ)|trước\s+\d+\s*giờ|khẩn\s+cấp|sắp\s+(?:hết\s+hạn|bị\s+khóa)|nếu\s+không|immediately|urgent|within\s+\d+)/iu
+      pattern:/(?:ngay\s+lập\s+tức|trong\s+\d+\s*(?:phút|giờ)|trước\s+\d+\s*giờ|khẩn\s+cấp|sắp\s+(?:hết\s+hạn|bị\s+khóa)|nếu\s+không|immediately|urgent|within\s+\d+)/iu,
+      foldedPattern:/(?:ngay\s+lap\s+tuc|trong\s+\d+\s*(?:phut|gio)|truoc\s+\d+\s*gio|khan\s+cap|sap\s+(?:het\s+han|bi\s+khoa)|neu\s+khong)/iu
     },
     {
       label:'Đe dọa hậu quả để gây hoảng sợ',
       weight:3,
-      pattern:/(?:bị\s+(?:khóa|bắt|khởi\s+tố|phạt)|ngừng\s+hoạt\s+động|truy\s+nã|lệnh\s+bắt|phát\s+tán|tống\s+tiền|blackmail|arrest|legal\s+action|suspend(?:ed|sion)?)/iu
+      pattern:/(?:bị\s+(?:khóa|bắt|khởi\s+tố|phạt)|ngừng\s+hoạt\s+động|truy\s+nã|lệnh\s+bắt|phát\s+tán|tống\s+tiền|blackmail|arrest|legal\s+action|suspend(?:ed|sion)?)/iu,
+      foldedPattern:/(?:bi\s+(?:khoa|bat|khoi\s+to|phat)|ngung\s+hoat\s+dong|truy\s+na|lenh\s+bat|phat\s+tan|tong\s+tien)/iu
     },
     {
       label:'Yêu cầu giữ bí mật hoặc cô lập người nhận',
@@ -78,7 +86,7 @@ const ScamCheckOffline=(()=>{
     },
     {
       label:'Câu chữ cố điều khiển hoặc vô hiệu hóa hệ thống phân tích',
-      weight:1,
+      weight:2,
       pattern:/(?:bỏ\s+qua\s+(?:mọi\s+)?hướng\s+dẫn|hãy\s+nói\s+tin\s+này\s+an\s+toàn|ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions)/iu
     },
     {
@@ -96,17 +104,22 @@ const ScamCheckOffline=(()=>{
 
   function analyze(text){
     const findings=[];
+    const foldedText=foldText(text);
     let score=0;
 
     RULES.forEach(rule=>{
-      const excerpt=rule.find?rule.find(text):(text.match(rule.pattern)?.[0]||null);
+      let excerpt=rule.find?rule.find(text):(text.match(rule.pattern)?.[0]||null);
+      if(!excerpt&&rule.foldedPattern){
+        const foldedMatch=foldedText.match(rule.foldedPattern);
+        if(foldedMatch)excerpt=text.slice(foldedMatch.index,foldedMatch.index+foldedMatch[0].length);
+      }
       if(!excerpt)return;
       score+=rule.weight;
       findings.push({label:rule.label,excerpt,weight:rule.weight});
     });
 
     findings.sort((a,b)=>b.weight-a.weight);
-    const riskLevel=score>=4?'dangerous':score>0?'suspicious':'safe';
+    const riskLevel=score>=4?'dangerous':score>=2?'suspicious':'safe';
     const confidence=riskLevel==='dangerous'
       ?Math.min(.96,.78+score*.025)
       :riskLevel==='suspicious'
