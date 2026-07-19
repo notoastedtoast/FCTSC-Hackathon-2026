@@ -15,6 +15,7 @@ from .schemas import (
     AiCallLog,
     AiCallUsage,
     AnalyzeRequest,
+    AnalyzeResponse,
     DEFAULT_ACTIONS,
     SCAM_SCENARIOS,
     ScamAnalysis,
@@ -30,6 +31,12 @@ AiCallRow = tuple[str, str, str, int, int | None, str]
 class AiCallReservation:
     call_id: str
     usage: AiCallUsage
+
+
+@dataclass(frozen=True)
+class AnalysisRequestClaim:
+    status: Literal["claimed", "pending", "completed", "conflict"]
+    response: AnalyzeResponse | None = None
 
 
 class DatabaseError(RuntimeError):
@@ -60,6 +67,56 @@ class AnalysisRepository:
         if self._is_in_memory:
             return self._save_sync(request, analysis)
         return await asyncio.to_thread(self._save_sync, request, analysis)
+
+    async def claim_analysis_request(
+        self, session_id: str, request_id: str, request_hash: str
+    ) -> AnalysisRequestClaim:
+        if self._is_in_memory:
+            return self._claim_analysis_request_sync(
+                session_id, request_id, request_hash
+            )
+        return await asyncio.to_thread(
+            self._claim_analysis_request_sync, session_id, request_id, request_hash
+        )
+
+    async def save_idempotent(
+        self,
+        request: AnalyzeRequest,
+        analysis: ScamAnalysis,
+        session_id: str,
+        request_id: str,
+        request_hash: str,
+        response: AnalyzeResponse,
+    ) -> None:
+        if self._is_in_memory:
+            self._save_idempotent_sync(
+                request,
+                analysis,
+                session_id,
+                request_id,
+                request_hash,
+                response,
+            )
+            return
+        await asyncio.to_thread(
+            self._save_idempotent_sync,
+            request,
+            analysis,
+            session_id,
+            request_id,
+            request_hash,
+            response,
+        )
+
+    async def release_analysis_request(
+        self, session_id: str, request_id: str, request_hash: str
+    ) -> None:
+        if self._is_in_memory:
+            self._release_analysis_request_sync(session_id, request_id, request_hash)
+            return
+        await asyncio.to_thread(
+            self._release_analysis_request_sync, session_id, request_id, request_hash
+        )
 
     async def get(self, record_id: str) -> StoredAnalysis | None:
         """Return a stored analysis by primary key, if it exists."""
@@ -113,44 +170,161 @@ class AnalysisRepository:
                 # Keep this lazy initialization for callers without an app lifespan.
                 self._create_schema(connection)
                 record_id = token_hex(16)
-                connection.execute(
-                    """
-                    INSERT INTO analyses (
-                        id,
-                        message_text,
-                        source,
-                        confidence,
-                        reasoning,
-                        indicators,
-                        indicator_evidence,
-                        actions,
-                        risk_level,
-                        scenarios
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        record_id,
-                        request.text,
-                        request.source,
-                        analysis.confidence,
-                        analysis.reasoning,
-                        json.dumps(analysis.indicators, ensure_ascii=False),
-                        json.dumps(
-                            [item.model_dump() for item in analysis.indicator_evidence],
-                            ensure_ascii=False,
-                        ),
-                        json.dumps(analysis.actions, ensure_ascii=False),
-                        analysis.provider_risk_level,
-                        json.dumps(
-                            [item.model_dump() for item in analysis.scenarios],
-                            ensure_ascii=False,
-                        ),
-                    ),
-                )
+                self._insert_analysis(connection, record_id, request, analysis)
         except (OSError, sqlite3.Error) as exc:
             raise DatabaseError("Unable to save the scam analysis") from exc
 
         return record_id
+
+    def _claim_analysis_request_sync(
+        self, session_id: str, request_id: str, request_hash: str
+    ) -> AnalysisRequestClaim:
+        try:
+            with self._connection() as connection:
+                self._create_schema(connection)
+                connection.commit()
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    """
+                    INSERT OR IGNORE INTO analysis_requests (
+                        session_id, request_id, request_hash, status, response_json
+                    ) VALUES (?, ?, ?, 'pending', NULL)
+                    """,
+                    (session_id, request_id, request_hash),
+                )
+                if cursor.rowcount == 1:
+                    connection.commit()
+                    return AnalysisRequestClaim(status="claimed")
+
+                row = connection.execute(
+                    """
+                    SELECT request_hash, status, response_json,
+                           updated_at <= datetime('now', '-60 seconds')
+                    FROM analysis_requests
+                    WHERE session_id = ? AND request_id = ?
+                    """,
+                    (session_id, request_id),
+                ).fetchone()
+                if row is None:
+                    connection.rollback()
+                    raise sqlite3.DatabaseError("Analysis request claim disappeared")
+                if row[0] != request_hash:
+                    connection.rollback()
+                    return AnalysisRequestClaim(status="conflict")
+                if row[1] == "completed" and row[2]:
+                    connection.rollback()
+                    return AnalysisRequestClaim(
+                        status="completed",
+                        response=AnalyzeResponse.model_validate_json(row[2]),
+                    )
+                if bool(row[3]):
+                    connection.execute(
+                        """
+                        UPDATE analysis_requests
+                        SET updated_at = CURRENT_TIMESTAMP
+                        WHERE session_id = ? AND request_id = ?
+                        """,
+                        (session_id, request_id),
+                    )
+                    connection.commit()
+                    return AnalysisRequestClaim(status="claimed")
+                connection.rollback()
+                return AnalysisRequestClaim(status="pending")
+        except (OSError, sqlite3.Error, ValueError) as exc:
+            raise DatabaseError("Unable to claim an analysis request") from exc
+
+    def _save_idempotent_sync(
+        self,
+        request: AnalyzeRequest,
+        analysis: ScamAnalysis,
+        session_id: str,
+        request_id: str,
+        request_hash: str,
+        response: AnalyzeResponse,
+    ) -> None:
+        try:
+            with self._connection() as connection:
+                self._create_schema(connection)
+                self._insert_analysis(connection, response.id, request, analysis)
+                cursor = connection.execute(
+                    """
+                    UPDATE analysis_requests
+                    SET status = 'completed', response_json = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE session_id = ? AND request_id = ?
+                      AND request_hash = ? AND status = 'pending'
+                    """,
+                    (
+                        response.model_dump_json(),
+                        session_id,
+                        request_id,
+                        request_hash,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise sqlite3.DatabaseError("Analysis request was not claimed")
+                connection.commit()
+        except (OSError, sqlite3.Error) as exc:
+            raise DatabaseError("Unable to save an idempotent scam analysis") from exc
+
+    def _release_analysis_request_sync(
+        self, session_id: str, request_id: str, request_hash: str
+    ) -> None:
+        try:
+            with self._connection() as connection, connection:
+                self._create_schema(connection)
+                connection.execute(
+                    """
+                    DELETE FROM analysis_requests
+                    WHERE session_id = ? AND request_id = ?
+                      AND request_hash = ? AND status = 'pending'
+                    """,
+                    (session_id, request_id, request_hash),
+                )
+        except (OSError, sqlite3.Error) as exc:
+            raise DatabaseError("Unable to release an analysis request") from exc
+
+    @staticmethod
+    def _insert_analysis(
+        connection: sqlite3.Connection,
+        record_id: str,
+        request: AnalyzeRequest,
+        analysis: ScamAnalysis,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO analyses (
+                id,
+                message_text,
+                source,
+                confidence,
+                reasoning,
+                indicators,
+                indicator_evidence,
+                actions,
+                risk_level,
+                scenarios
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record_id,
+                request.text,
+                request.source,
+                analysis.confidence,
+                analysis.reasoning,
+                json.dumps(analysis.indicators, ensure_ascii=False),
+                json.dumps(
+                    [item.model_dump() for item in analysis.indicator_evidence],
+                    ensure_ascii=False,
+                ),
+                json.dumps(analysis.actions, ensure_ascii=False),
+                analysis.provider_risk_level,
+                json.dumps(
+                    [item.model_dump() for item in analysis.scenarios],
+                    ensure_ascii=False,
+                ),
+            ),
+        )
 
     def _get_sync(self, record_id: str) -> StoredAnalysis | None:
         try:
@@ -366,4 +540,18 @@ class AnalysisRepository:
         )
         _ = connection.execute(
             "CREATE INDEX IF NOT EXISTS ai_calls_session_id ON ai_calls(session_id)"
+        )
+        _ = connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analysis_requests (
+                session_id TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'completed')),
+                response_json TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (session_id, request_id)
+            )
+            """
         )

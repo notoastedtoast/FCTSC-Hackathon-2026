@@ -1,11 +1,22 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from hashlib import sha256
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path as FilePath
 from secrets import token_hex
 from typing import Annotated, Protocol, cast
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Path,
+    Request,
+    Response,
+    status,
+)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -19,7 +30,12 @@ from .config import (
     load_database_path,
     load_settings,
 )
-from .database import AiCallReservation, AnalysisRepository, DatabaseError
+from .database import (
+    AiCallReservation,
+    AnalysisRepository,
+    AnalysisRequestClaim,
+    DatabaseError,
+)
 from .schemas import (
     AiCallHistory,
     AiCallLog,
@@ -43,6 +59,7 @@ FRONTEND_INDEX = FRONTEND_DIRECTORY / "index.html"
 FRONTEND_LOGO = FRONTEND_DIRECTORY / "scamcheck-logo.png"
 FRONTEND_STYLES = FRONTEND_DIRECTORY / "styles.css"
 FRONTEND_SCRIPT = FRONTEND_DIRECTORY / "app.js"
+FRONTEND_OFFLINE_ANALYZER = FRONTEND_DIRECTORY / "offline-analyzer.js"
 FRONTEND_SERVICE_WORKER = FRONTEND_DIRECTORY / "service-worker.js"
 
 
@@ -62,6 +79,24 @@ class Repository(Protocol):
     async def initialize(self) -> None: ...
 
     async def save(self, request: AnalyzeRequest, analysis: ScamAnalysis) -> str: ...
+
+    async def claim_analysis_request(
+        self, session_id: str, request_id: str, request_hash: str
+    ) -> AnalysisRequestClaim: ...
+
+    async def save_idempotent(
+        self,
+        request: AnalyzeRequest,
+        analysis: ScamAnalysis,
+        session_id: str,
+        request_id: str,
+        request_hash: str,
+        response: AnalyzeResponse,
+    ) -> None: ...
+
+    async def release_analysis_request(
+        self, session_id: str, request_id: str, request_hash: str
+    ) -> None: ...
 
     async def get(self, record_id: str) -> StoredAnalysis | None: ...
 
@@ -138,6 +173,20 @@ async def _complete_log(
         logger.exception("Unable to complete AI call audit log %s", call_id)
 
 
+async def _release_analysis_request(
+    repository: Repository,
+    session_id: str,
+    request_id: str | None,
+    request_hash: str | None,
+) -> None:
+    if request_id is None or request_hash is None:
+        return
+    try:
+        await repository.release_analysis_request(session_id, request_id, request_hash)
+    except DatabaseError:
+        logger.exception("Unable to release analysis request %s", request_id)
+
+
 async def validation_error_handler(
     _request: Request, _exc: RequestValidationError
 ) -> JSONResponse:
@@ -165,11 +214,20 @@ async def frontend_script() -> Response:
     return Response(FRONTEND_SCRIPT.read_bytes(), media_type="text/javascript")
 
 
+async def frontend_offline_analyzer() -> Response:
+    return Response(
+        FRONTEND_OFFLINE_ANALYZER.read_bytes(), media_type="text/javascript"
+    )
+
+
 async def frontend_service_worker() -> Response:
     return Response(
         FRONTEND_SERVICE_WORKER.read_bytes(),
         media_type="text/javascript",
-        headers={"Service-Worker-Allowed": "/"},
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache",
+        },
     )
 
 
@@ -220,10 +278,47 @@ async def get_scam_type(
 async def analyze(
     payload: AnalyzeRequest,
     request: Request,
+    request_id: Annotated[
+        str | None,
+        Header(
+            alias="X-ScamCheck-Request-ID",
+            min_length=16,
+            max_length=64,
+            pattern=r"^[A-Za-z0-9_-]+$",
+        ),
+    ] = None,
     analyzer: Analyzer = Depends(get_analyzer),
     repository: Repository = Depends(get_repository),
 ) -> AnalyzeResponse:
     session_id = _session_id(request)
+    request_hash = (
+        sha256(payload.model_dump_json().encode("utf-8")).hexdigest()
+        if request_id is not None
+        else None
+    )
+    if request_id is not None and request_hash is not None:
+        claim = await _use_database(
+            repository.claim_analysis_request(session_id, request_id, request_hash),
+            "claim",
+        )
+        if claim.status == "completed" and claim.response is not None:
+            return claim.response
+        if claim.status == "conflict":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This request ID was already used for different content.",
+                headers={"X-ScamCheck-Request-Status": "conflict"},
+            )
+        if claim.status == "pending":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This analysis is still processing.",
+                headers={
+                    "Retry-After": "2",
+                    "X-ScamCheck-Request-Status": "pending",
+                },
+            )
+
     call_limit = cast(int, request.app.state.ai_session_call_limit)
     reservation = await _use_database(
         repository.reserve_ai_call(
@@ -232,6 +327,9 @@ async def analyze(
         "reserve",
     )
     if reservation is None:
+        await _release_analysis_request(
+            repository, session_id, request_id, request_hash
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=(
@@ -246,7 +344,12 @@ async def analyze(
     try:
         analysis = await analyzer.analyze(payload)
     except AnalysisError as exc:
-        await _complete_log(repository, reservation.call_id, False, "Detective call failed.")
+        await _complete_log(
+            repository, reservation.call_id, False, "Detective call failed."
+        )
+        await _release_analysis_request(
+            repository, session_id, request_id, request_hash
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Unable to complete scam analysis at this time",
@@ -298,6 +401,33 @@ async def analyze(
                     True,
                     character_reply.message,
                 )
+
+    response = AnalyzeResponse(
+        id=token_hex(16),
+        detective=detective,
+        character=character_reply,
+        character_notice=character_notice,
+        usage=usage,
+    )
+    if request_id is not None and request_hash is not None:
+        try:
+            await _use_database(
+                repository.save_idempotent(
+                    payload,
+                    analysis,
+                    session_id,
+                    request_id,
+                    request_hash,
+                    response,
+                ),
+                "save",
+            )
+        except HTTPException:
+            await _release_analysis_request(
+                repository, session_id, request_id, request_hash
+            )
+            raise
+        return response
 
     record_id = await _use_database(repository.save(payload, analysis), "save")
     return AnalyzeResponse(
@@ -389,6 +519,14 @@ def create_app(
             methods=["GET"],
             include_in_schema=False,
             name="frontend-script",
+        )
+    if FRONTEND_OFFLINE_ANALYZER.is_file():
+        app.add_api_route(
+            "/offline-analyzer.js",
+            frontend_offline_analyzer,
+            methods=["GET"],
+            include_in_schema=False,
+            name="frontend-offline-analyzer",
         )
     if FRONTEND_SERVICE_WORKER.is_file():
         app.add_api_route(

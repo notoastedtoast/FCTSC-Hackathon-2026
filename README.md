@@ -26,7 +26,9 @@ trên thiết bị hiện tại; mục cũ tạo trước tính năng này vẫn
 Sau lần tải thành công đầu tiên, service worker lưu giao diện, CSS, JavaScript, bộ phân tích
 ngoại tuyến và logo. Khi mất mạng, tin nhắn được phân tích ngay trên thiết bị, không gửi đi,
 không dùng lượt AI và không ghi SQLite. Kết quả luôn được ghi rõ là đánh giá sơ bộ ngoại
-tuyến; khi có mạng, luồng kiểm tra tiếp tục dùng Gemini như bình thường.
+tuyến. Nếu kết nối bị gián đoạn trong lúc Gemini đang xử lý, trình duyệt giữ tin nhắn cùng
+mã yêu cầu trong tab và tự lấy lại đúng kết quả khi có mạng; gửi lại cùng mã không tạo thêm
+lượt AI hoặc bản ghi phân tích.
 
 ## Chạy dự án
 

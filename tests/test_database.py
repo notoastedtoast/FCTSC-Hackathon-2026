@@ -9,6 +9,35 @@ from tests.factories import scenario_assessments
 
 
 class AnalysisRepositoryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_analysis_request_claims_are_session_scoped_and_releasable(self) -> None:
+        repository = AnalysisRepository(":memory:")
+        await repository.initialize()
+
+        claimed = await repository.claim_analysis_request(
+            "a" * 32, "request-key-0001", "hash-one"
+        )
+        pending = await repository.claim_analysis_request(
+            "a" * 32, "request-key-0001", "hash-one"
+        )
+        conflict = await repository.claim_analysis_request(
+            "a" * 32, "request-key-0001", "hash-two"
+        )
+        other_session = await repository.claim_analysis_request(
+            "b" * 32, "request-key-0001", "hash-two"
+        )
+        await repository.release_analysis_request(
+            "a" * 32, "request-key-0001", "hash-one"
+        )
+        reclaimed = await repository.claim_analysis_request(
+            "a" * 32, "request-key-0001", "hash-two"
+        )
+
+        self.assertEqual(claimed.status, "claimed")
+        self.assertEqual(pending.status, "pending")
+        self.assertEqual(conflict.status, "conflict")
+        self.assertEqual(other_session.status, "claimed")
+        self.assertEqual(reclaimed.status, "claimed")
+
     async def test_ai_call_reservation_enforces_session_limit(self) -> None:
         repository = AnalysisRepository(":memory:")
         await repository.initialize()
@@ -121,8 +150,14 @@ class AnalysisRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
         await repository.initialize()
         retrieved = await repository.get("0" * 31 + "1")
+        with repository._connect() as connection:
+            request_table = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+                ("analysis_requests",),
+            ).fetchone()
 
         assert retrieved is not None
+        self.assertEqual(request_table, ("analysis_requests",))
         self.assertEqual(len(retrieved.scenarios), 12)
         self.assertTrue(all(not assessment.detected for assessment in retrieved.scenarios))
         self.assertTrue(

@@ -1,4 +1,5 @@
 import os
+from hashlib import sha256
 import unittest
 
 import httpx
@@ -108,11 +109,14 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(script.status_code, 200)
         self.assertIn("text/javascript", script.headers["content-type"])
         self.assertIn('requestJson("/analyze"', script.text)
-        self.assertEqual(offline_analyzer.status_code, 404)
+        self.assertEqual(offline_analyzer.status_code, 200)
+        self.assertIn("text/javascript", offline_analyzer.headers["content-type"])
+        self.assertIn("ScamCheckOffline", offline_analyzer.text)
         self.assertEqual(service_worker.status_code, 200)
         self.assertIn("text/javascript", service_worker.headers["content-type"])
         self.assertEqual(service_worker.headers["service-worker-allowed"], "/")
-        self.assertNotIn("offline-analyzer.js", service_worker.text)
+        self.assertEqual(service_worker.headers["cache-control"], "no-cache")
+        self.assertIn('"/offline-analyzer.js"', service_worker.text)
         self.assertNotIn("/analyze", service_worker.text)
         self.assertEqual(health.json(), {"status": "ok"})
 
@@ -294,6 +298,99 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         )
         await analyzer.aclose()
         self.assertTrue(analyzer.closed)
+
+    async def test_repeated_request_id_replays_without_another_ai_call(self) -> None:
+        analyzer = StubAnalyzer(
+            result=ScamAnalysis(
+                risk_level="safe",
+                confidence=0.12,
+                reasoning="Ordinary conversation.",
+                scenarios=scenario_assessments(),
+            )
+        )
+        app = create_app(analyzer=analyzer, repository=self.repository)
+        headers = {"X-ScamCheck-Request-ID": "retry-request-0001"}
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            first = await client.post(
+                "/analyze", json={"text": "Hello from Hanoi"}, headers=headers
+            )
+            replay = await client.post(
+                "/analyze", json={"text": "Hello from Hanoi"}, headers=headers
+            )
+            history = await client.get("/session/ai-calls")
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(replay.status_code, 200)
+        self.assertEqual(replay.json(), first.json())
+        self.assertEqual(analyzer.events, ["detective"])
+        self.assertEqual(history.json()["usage"], {"used": 1, "limit": 10})
+
+    async def test_request_id_cannot_be_reused_for_different_content(self) -> None:
+        analyzer = StubAnalyzer(
+            result=ScamAnalysis(
+                risk_level="safe",
+                confidence=0.12,
+                reasoning="Ordinary conversation.",
+                scenarios=scenario_assessments(),
+            )
+        )
+        app = create_app(analyzer=analyzer, repository=self.repository)
+        headers = {"X-ScamCheck-Request-ID": "retry-request-0002"}
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            first = await client.post(
+                "/analyze", json={"text": "First ordinary message"}, headers=headers
+            )
+            conflict = await client.post(
+                "/analyze", json={"text": "Different ordinary message"}, headers=headers
+            )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(
+            conflict.headers["x-scamcheck-request-status"], "conflict"
+        )
+        self.assertEqual(analyzer.events, ["detective"])
+
+    async def test_pending_request_id_returns_retryable_conflict_without_ai_call(
+        self,
+    ) -> None:
+        analyzer = StubAnalyzer(
+            result=ScamAnalysis(
+                risk_level="safe",
+                confidence=0.12,
+                reasoning="Ordinary conversation.",
+                scenarios=scenario_assessments(),
+            )
+        )
+        app = create_app(analyzer=analyzer, repository=self.repository)
+        payload = AnalyzeRequest(text="Pending ordinary message", source="web")
+        request_id = "retry-request-0003"
+        request_hash = sha256(payload.model_dump_json().encode("utf-8")).hexdigest()
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            await client.get("/health")
+            session_id = client.cookies["scamcheck_session"]
+            await self.repository.claim_analysis_request(
+                session_id, request_id, request_hash
+            )
+            response = await client.post(
+                "/analyze",
+                json=payload.model_dump(),
+                headers={"X-ScamCheck-Request-ID": request_id},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.headers["retry-after"], "2")
+        self.assertEqual(response.headers["x-scamcheck-request-status"], "pending")
+        self.assertEqual(analyzer.events, [])
 
     async def test_session_quota_stops_new_calls_and_exposes_usage(self) -> None:
         analyzer = StubAnalyzer(

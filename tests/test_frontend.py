@@ -6,18 +6,33 @@ import unittest
 
 
 class FrontendTests(unittest.TestCase):
+    def test_every_required_javascript_element_exists_in_the_page(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        page = (root / "frontend" / "index.html").read_text(encoding="utf-8")
+        script = (root / "frontend" / "app.js").read_text(encoding="utf-8")
+
+        page_ids = set(re.findall(r'\bid=["\']([^"\']+)["\']', page))
+        required_ids = set(
+            re.findall(r'document\.getElementById\(["\']([^"\']+)["\']\)', script)
+        )
+
+        self.assertEqual(required_ids - page_ids, set())
+
     def test_static_page_calls_backend_and_keeps_results_separate(self) -> None:
         root = Path(__file__).resolve().parent.parent
         frontend = root / "frontend"
         page = (frontend / "index.html").read_text(encoding="utf-8")
         styles = (frontend / "styles.css").read_text(encoding="utf-8")
         script = (frontend / "app.js").read_text(encoding="utf-8")
+        offline_analyzer = (frontend / "offline-analyzer.js").read_text(
+            encoding="utf-8"
+        )
         service_worker = (frontend / "service-worker.js").read_text(encoding="utf-8")
 
         self.assertTrue((frontend / "scamcheck-logo.png").is_file())
         self.assertIn('href="./styles.css"', page)
         self.assertIn('src="./app.js"', page)
-        self.assertNotIn("offline-analyzer.js", page)
+        self.assertIn('src="./offline-analyzer.js"', page)
         self.assertNotIn("<style>", page)
         self.assertNotIn("<script>", page)
         self.assertIn(":root", styles)
@@ -84,9 +99,12 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("detective.indicator_evidence", script)
         self.assertIn("detective.actions", script)
         self.assertNotIn("activeCheckController", script)
+        self.assertIn("isAnalyzing=false", script)
         self.assertNotIn("startScanAnimation", script)
+        self.assertNotIn("stopScanAnimation", script)
         self.assertNotIn("processingFrame", script)
         self.assertNotIn("resultBackButton", script)
+        self.assertNotIn("cancelCheckButton", script)
         self.assertIn("historyReturnButton.hidden=!fromHistory", script)
         self.assertIn("historyReturnButton.addEventListener('click'", script)
         self.assertNotIn("/links/inspect", script)
@@ -96,13 +114,15 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("window.addEventListener('offline',updateConnectivityState)", script)
         self.assertIn("window.addEventListener('online',updateConnectivityState)", script)
         self.assertIn("sessionStorage.setItem(DRAFT_KEY", script)
-        self.assertNotIn("PENDING_ANALYSIS_KEY", script)
-        self.assertNotIn("resumePendingAnalysis", script)
-        self.assertNotIn("fetch('/health'", script)
-        self.assertIn("isOffline||sessionAtLimit", script)
-        self.assertNotIn("ScamCheckOffline", script)
-        self.assertIn("Phân tích đã dừng do mất kết nối", script)
-        self.assertIn("kết nối mạng rồi thử lại", script)
+        self.assertIn("sessionStorage.setItem(PENDING_ANALYSIS_KEY", script)
+        self.assertIn("'X-ScamCheck-Request-ID':requestId", script)
+        self.assertIn("requestStatus==='pending'", script)
+        self.assertIn("fetch('/health',{cache:'no-store'})", script)
+        self.assertIn("function resumePendingAnalysis()", script)
+        self.assertIn("scheduleConnectionProbe()", script)
+        self.assertIn("tiến trình phân tích đã được lưu", script)
+        self.assertIn("(!isOffline&&sessionAtLimit)", script)
+        self.assertIn("ScamCheckOffline.analyze(submittedText)", script)
         self.assertIn("analysis_mode==='offline'", script)
         self.assertIn("window.addEventListener('hashchange'", script)
         self.assertIn("function switchView(", script)
@@ -124,11 +144,13 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn("historyList.innerHTML", script)
         self.assertNotIn(".processing-frame", styles)
         self.assertNotIn("@keyframes scan", styles)
-        self.assertFalse((frontend / "offline-analyzer.js").exists())
-        self.assertNotIn("offline-analyzer.js", service_worker)
+        self.assertIn("const ScamCheckOffline", offline_analyzer)
+        self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
+        self.assertIn('"/offline-analyzer.js"', service_worker)
         self.assertIn('CACHE_NAME="scamcheck-shell-v9"', service_worker)
         self.assertIn("fetch(request)", service_worker)
-        self.assertIn(".catch(()=>caches.match(request))", service_worker)
+        self.assertIn("const cacheKey=url.pathname", service_worker)
+        self.assertIn("event.waitUntil(refresh.then(", service_worker)
         self.assertNotIn("/analyze", service_worker)
         self.assertNotIn("/session/ai-calls", service_worker)
 

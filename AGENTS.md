@@ -53,13 +53,14 @@ contract below records behavior that is easy to miss from schemas alone.
 | `GET /health` | None | `{"status":"ok"}` | Does not call Gemini or SQLite. |
 | `GET /scam-types` | Optional `group`: `fake_bank`, `fake_police`, `prize`, or `fake_delivery` | Array of 12 authored `ScamType` records, filtered when requested | Reads validated process-local data only; every group has three entries. |
 | `GET /scam-types/{scam_type_id}` | Lowercase hyphenated catalog ID | One `ScamType` with name, description, example message, and group | Returns 404 when absent and 422 for a malformed ID. |
-| `POST /analyze` | JSON `text` (1–10,000 nonblank characters), optional `source` (up to 100 characters) | `AnalyzeResponse`: random analysis `id`, `detective`, optional `character`, optional `character_notice`, and `usage` | Atomically reserves and audits one `detective` call under the configured session limit. A suspicious/dangerous result may reserve a second `character` call. Returns 429 without calling Gemini when no slot remains, 502 for Detective provider failure, and 503 for repository failure. The analysis is saved only after generation completes. |
+| `POST /analyze` | JSON `text` (1–10,000 nonblank characters), optional `source` (up to 100 characters), and optional `X-ScamCheck-Request-ID` header | `AnalyzeResponse`: random analysis `id`, `detective`, optional `character`, optional `character_notice`, and `usage` | A valid request ID makes reconnect retries idempotent within the cookie session: a completed retry replays the original response, a still-pending retry returns 409 with `Retry-After`, and reusing the ID for different content returns 409. A newly claimed request atomically reserves and audits one `detective` call under the configured session limit. A suspicious/dangerous result may reserve a second `character` call. Returns 429 without calling Gemini when no slot remains, 502 for Detective provider failure, and 503 for repository failure. The analysis is saved only after generation completes. |
 | `GET /analyses/{analysis_id}` | A 32-character lowercase hexadecimal ID | `StoredAnalysis` | Returns 404 when absent and 422 for a malformed ID. The random ID acts as a bearer capability; this route is not session-owned. Stored responses do not include the generated character reply. |
 | `GET /session/ai-calls` | HttpOnly session cookie set by middleware | `AiCallHistory` with authoritative `used`/`limit` usage and ordered calls | Returns audit metadata for the current cookie session only. It does not return analysis ownership. |
 | `GET /` | None | `frontend/index.html` | Registered when the file exists; it does not expose other repository files. |
 | `GET /styles.css` | None | `frontend/styles.css` | Explicit stylesheet route; no directory mount or listing. |
 | `GET /app.js` | None | `frontend/app.js` | Explicit JavaScript route; no directory mount or listing. |
-| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the four authored shell assets for loading the interface; it never intercepts API routes. |
+| `GET /offline-analyzer.js` | None | `frontend/offline-analyzer.js` | Conservative browser-only fallback used when the browser reports no connection. |
+| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the five authored shell assets for offline loading; it never intercepts API routes. |
 | `GET /scamcheck-logo.png` | None | `frontend/scamcheck-logo.png` | Explicit PNG route; the repository and other frontend files are never exposed as a static directory. |
 
 All FastAPI request-validation failures use the deliberately generic 422 detail:
@@ -72,18 +73,21 @@ handler specific to `/analyze`; it also handles path parameters.
 
 1. `session_cookie_middleware` accepts a valid 32-character hex cookie or generates one.
 2. Pydantic validates `AnalyzeRequest` before route code runs.
-3. `reserve_ai_call` atomically checks the configured session limit, inserts a pending
+3. When the optional request ID is present, the repository claims its session-scoped
+   content hash before quota is used. Completed retries replay the saved response and
+   pending retries wait without another provider call.
+4. `reserve_ai_call` atomically checks the configured session limit, inserts a pending
    `detective` audit row when a slot remains, and returns authoritative `used`/`limit`
    usage. A full session receives 429 without a provider call.
-4. `ScamAnalyzer.analyze` requests structured Gemini JSON. Malformed provider content
+5. `ScamAnalyzer.analyze` requests structured Gemini JSON. Malformed provider content
    becomes a conservative fallback; timeouts and HTTP failures become `AnalysisError`.
-5. The validated provider `risk_level` becomes the Detective risk unchanged. If malformed
+6. The validated provider `risk_level` becomes the Detective risk unchanged. If malformed
    provider content triggers the conservative fallback, its risk is `suspicious`.
-6. Suspicious/dangerous results may invoke `CALMING_GUIDE`. Character failure is optional
+7. Suspicious/dangerous results may invoke `CALMING_GUIDE`. Character failure is optional
    here: `CharacterError` and provider-adapter `ValueError` are isolated, so the Detective
    result remains successful and `character_notice` is returned.
-7. The repository saves the submitted text and validated `ScamAnalysis`, and the route
-   returns the random record ID.
+8. The repository saves the submitted text and validated `ScamAnalysis`. For an
+   idempotent request, the analysis and replayable response are committed atomically.
 
 When online, the frontend makes one checking request to `/analyze` and renders the returned
 `detective` and `character`/`character_notice` in separate panels. It never calls Cô tâm lý
@@ -93,10 +97,13 @@ links or HTML. The page also reads `/session/ai-calls` to display authoritative
 `used`/`limit` usage and disables submission after the session reaches its ceiling.
 
 The browser keeps the composer visible and disables its submit button while a check is in
-progress; it has no separate processing animation or browser-cancel control. A successful
-submission is added to a ten-item localStorage history; deleting that browser-local copy
-does not delete the SQLite analysis. The persistent top navigation uses `#analyze`,
-`#library`, `#history`, and `#practice` views. Library detail state uses
+progress; it has no separate processing animation or browser-cancel control. Online
+requests persist a random request ID with the pending message in tab-scoped storage before
+calling the API. Reconnect retries reuse that ID, so completed work does not consume quota
+twice; a pending server response is polled without replacing it with an offline result. A
+successful submission is added to a ten-item localStorage history; deleting that
+browser-local copy does not delete the SQLite analysis. The persistent top navigation uses
+`#analyze`, `#library`, `#history`, and `#practice` views. Library detail state uses
 `#library/{scam_type_id}`. The logo is presentational rather than a navigation link,
 and the result header has no extra “check another message” button. A “Trở lại lịch sử”
 button appears only while reviewing a saved history result.
@@ -107,12 +114,13 @@ online/offline mode. “Xem kết quả” converts that snapshot into the exist
 renderer without regenerating it; legacy message-only entries remain supported but clearly
 show that no result was saved.
 
-The service worker caches `/`, `/styles.css`, `/app.js`, and `/scamcheck-logo.png` after a
-successful online visit. It never caches API responses, submitted text, analysis results,
-or session usage. When the browser reports no connection, the frontend does not analyze
-the message locally: it disables submission and asks the user to reconnect and try again.
-If connectivity is lost during analysis, the waiting state ends with the same connection
-error; the composer draft remains in tab-scoped `sessionStorage` for a manual retry.
+The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app.js`, and
+`/scamcheck-logo.png` after a successful online visit. When the browser reports that it is
+offline, `offline-analyzer.js` performs a conservative rule-based assessment on the device
+and labels it as preliminary. It does not call Gemini, consume quota, write SQLite, or claim
+provider accuracy. API responses, submitted text, analysis results, and session usage are
+never added to the offline cache. A zero-signal offline result must still warn that it
+cannot establish safety.
 
 ### Catalog
 
@@ -123,8 +131,9 @@ error; the composer draft remains in tab-scoped `sessionStorage` for a manual re
   `/scam-types/{scam_type_id}`. Search and group filtering run on the loaded list without
   navigation or reload; group-level safety guidance may live in the client but authored
   catalog records must not be copied there.
-- Link and message assessment belongs only to the provider-backed `/analyze` call. The
-  browser must not produce a local risk assessment while offline.
+- Online link and message assessment belongs to the provider-backed `/analyze` call. The
+  browser's offline analyzer is a deliberately limited fallback and must not alter online
+  provider results.
 
 ### Frontend recognition exercise
 
@@ -169,6 +178,9 @@ creation and the migration path for older analysis tables.
   data, actions, provider risk level, scenario matrix, and timestamp.
 - `ai_calls` stores random call ID, opaque session ID, call kind, input length, pending or
   final success status, summary, and timestamp.
+- `analysis_requests` stores a session-scoped random request ID, a content hash, pending or
+  completed status, and the completed response JSON. It does not duplicate raw submitted
+  text. Its response and `analyses` row are committed in one transaction.
 - There is intentionally no character-chat endpoint, request schema, conversation table,
   or transcript storage.
 - AI-call quota reservation uses `BEGIN IMMEDIATE`, making the limit-check-and-insert
@@ -187,7 +199,7 @@ legacy-schema test in `tests/test_database.py`.
 
 - `src/main.py`: FastAPI composition, lifespan, dependency protocols, cookie middleware,
   global validation handler, AI-call audit orchestration, HTTP routes, error translation,
-  and the five explicit frontend asset routes. Keep provider logic out of routes and SQLite
+  and the six explicit frontend asset routes. Keep provider logic out of routes and SQLite
   details out of this file.
 - `src/schemas.py`: public Pydantic request/response models, constrained IDs and text,
   catalog contracts, twelve ordered scam scenario codes, default actions, and model-level
@@ -203,7 +215,8 @@ legacy-schema test in `tests/test_database.py`.
   contract used for the optional one-time `/analyze` response.
 - `src/database.py`: SQLite initialization/migrations, analysis serialization,
   cryptographically random IDs, atomic AI-call reservations, audit completion/history,
-  async thread handoff for file databases, and the shared in-memory test connection.
+  idempotent request claiming/replay, async thread handoff for file databases, and the
+  shared in-memory test connection.
 - `src/config.py`: `.env` loading, provider aliases (`GOOGLE_*` preferred over legacy
   `GEMINI_*`), database path, and positive `AI_SESSION_CALL_LIMIT` validation. Loading only
   the database path does not require provider credentials.
@@ -219,7 +232,7 @@ legacy-schema test in `tests/test_database.py`.
 - `tests/test_analyzer.py`: mocked HTTP tests for Gemini request schemas, parsing/fallback,
   rate-limit backoff, character voice enforcement, and prompt injection isolation.
 - `tests/test_database.py`: save/get behavior and migration of records created before the
-  scenario/action/evidence columns.
+  scenario/action/evidence columns, plus session-scoped idempotency claims.
 - `tests/test_config.py`: default, override, and invalid session-call-limit configuration.
 - `tests/test_catalog.py`: catalog size, required fields, and group balance.
 - `tests/test_regression.py`: runs the labeled corpus through the offline HTTP API and
@@ -228,7 +241,7 @@ legacy-schema test in `tests/test_database.py`.
   messages, including the four named library groups and prompt-injection attempts.
 - `tests/test_frontend.py`: validates that the root page calls the analysis and usage
   APIs online; renders Detective/Cô tâm lý separately; keeps the balanced practice dataset
-  and grading in the browser; verifies connection errors do not trigger local analysis; and keeps
+  and grading in the browser; wires the explicitly preliminary offline analyzer; and keeps
   analysis, local history, and practice in separate hash-routed views.
 - `tests/factories.py`: canonical ordered scenario builders shared by API/analyzer/database
   tests. Use these instead of hand-building a partial scenario matrix.
@@ -246,11 +259,14 @@ legacy-schema test in `tests/test_database.py`.
   focus states, and reduced-motion behavior.
 - `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
   handling, safe result rendering,
-  voice input, browser-local recent-message history, the API-backed scam library, and the
-  local recognition prompts/grading/score. It registers the offline shell service worker,
-  rejects analysis while disconnected, owns hash-based view switching, and supports
+  voice input, browser-local recent-message history, the API-backed scam library, and the local
+  recognition prompts/grading/score. It registers the offline shell service worker and
+  routes offline submissions through the local analyzer, owns hash-based view switching, and supports
   reusing a history item in the composer. It contains no direct character API call, chat
-  UI, duplicated scam catalog, or offline risk engine.
+  UI, or duplicated scam catalog.
+- `frontend/offline-analyzer.js`: conservative, browser-only rules that return a compatible
+  preliminary risk result without network, quota, cookie, or database access. It is not
+  used to override a Gemini result.
 - `frontend/service-worker.js`: versioned cache for the root page, stylesheet, browser
   scripts, and logo only. It does not intercept or cache API requests or user data.
 - `frontend/scamcheck-logo.png`: the only standalone visual asset used by the page.
@@ -373,13 +389,12 @@ catalog helpers, backend sample data, and API tests were removed. The exercise m
 network, Gemini, SQLite, cookie, or localStorage call. The analysis API, database schema,
 and provider prompts did not change.
 
-The offline continuation first added a narrowly scoped service worker and later a
-conservative local rules engine. On 2026-07-19, the local assessment was removed: an
-offline submission now shows a connection error, and losing connectivity during analysis
-ends the waiting state with an instruction to reconnect and retry manually. The service
-worker still caches only the authored interface shell. No API response or submitted text
-is cached, and the database schema, public response shapes, and provider prompts did not
-change.
+The offline continuation first added a narrowly scoped service worker, then was clarified
+by the user to require actual message analysis without connectivity. The browser now uses
+a conservative local rules engine only while offline and clearly labels its output as
+preliminary; online analysis remains provider-backed and authoritative. No API response or
+submitted text is cached, and offline results do not consume quota or reach SQLite. The
+database schema, public response shapes, and provider prompts did not change.
 
 The later UI/UX refactor replaced the stacked analysis/practice page and history overlay
 with a persistent three-item top navigation. Analysis, browser-local history, and practice
@@ -402,18 +417,6 @@ offline result. It initially stored interrupted analysis state and automatically
 after probing `/health`; the 2026-07-19 change above replaced that behavior with an explicit
 error and manual retry while preserving only the ordinary composer draft. No API, database,
 provider prompt, or public response shape changed.
-
-The voice-input control was later condensed from a separate tool card into an icon-only
-microphone button inside the message field. Its accessible label, recording state, and
-status text remain available, while the speech-recognition behavior and API flow are
-unchanged. No database schema, public response shape, or provider prompt changed.
-
-The scam-type library was later added as a fourth hash-routed frontend view. It loads the
-existing twelve-record backend catalog, filters and searches the loaded list in place, and
-loads selected details through the existing detail endpoint. Detail pages add group-level
-recognition and safety guidance, preserve list filter state and scroll position, and use
-browser-compatible hash navigation without duplicating catalog records. No endpoint,
-database schema, public response shape, provider prompt, or catalog data changed.
 
 ## Handoff checklist
 
