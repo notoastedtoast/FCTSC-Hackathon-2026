@@ -1,9 +1,13 @@
-const CHECK_COOLDOWN_MS=5000,MIN_LENGTH=10,MAX_LENGTH=10000;
-const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultContextLabel=document.getElementById('result-context-label'),historyReturnButton=document.getElementById('history-return-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
-const psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
+const scanStage = document.getElementById("scan-stage");
+const scanMessage = document.getElementById("scan-message");
+const scanLayer = document.getElementById("scan-layer");
+const CHECK_COOLDOWN_MS=5000,MIN_LENGTH=10,MAX_LENGTH=10000,CONNECTION_RETRY_MS=5000,DRAFT_KEY='scamcheck-message-draft',PENDING_ANALYSIS_KEY='scamcheck-pending-analysis';
+const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),connectivityMessage=document.getElementById('connectivity-message'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),processingFrame=document.getElementById('processing-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultBackButton=document.getElementById('result-back-button'),resultContextLabel=document.getElementById('result-context-label'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
+const cancelCheckButton=document.getElementById('cancel-check-button'),psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
 const practiceContent=document.getElementById('practice-content'),practiceMessage=document.getElementById('practice-message'),practiceProgress=document.getElementById('practice-progress'),practiceScore=document.getElementById('practice-score'),practiceAnswerButtons=document.querySelectorAll('.practice-answer-button'),practiceFeedback=document.getElementById('practice-feedback'),practiceNextButton=document.getElementById('practice-next-button');
 const navLinks=document.querySelectorAll('.nav-link[data-view]'),pageViews=document.querySelectorAll('[data-view-panel]');
-let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),isAnalyzing=false,sessionAtLimit=false,isOffline=!navigator.onLine;
+const toolsColumn=document.querySelector('.tools-column'),mobileQuickCards=document.querySelectorAll('.quick-input-card,.sample-card'),mobileLayoutQuery=window.matchMedia('(max-width: 620px)');
+let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,reconnectTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),activeCheckController=null,sessionAtLimit=false,isOffline=!navigator.onLine,connectionUnstable=false,resultReturnView='analyze';
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
 const samples={bank:'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',delivery:'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',prize:'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.'};
 const practicePrompts=[
@@ -71,6 +75,17 @@ const practicePrompts=[
 const normalizedValue=()=>messageInput.value.replace(/\s+/g,' ').trim();
 const viewTitles={analyze:'Kiểm tra',history:'Lịch sử',practice:'Luyện tập'};
 
+function syncQuickInputLayout(){
+  if(mobileLayoutQuery.matches){
+    mobileQuickCards.forEach(card=>checkButton.before(card));
+    return;
+  }
+  mobileQuickCards.forEach(card=>toolsColumn.append(card));
+}
+
+syncQuickInputLayout();
+mobileLayoutQuery.addEventListener('change',syncQuickInputLayout);
+
 function viewFromHash(){
   const candidate=window.location.hash.slice(1);
   return Object.hasOwn(viewTitles,candidate)?candidate:'analyze';
@@ -105,6 +120,38 @@ function showComposerFrame(){
 
 function showFeedback(message,type='error'){feedback.textContent=message;feedback.className=`feedback ${type}`}
 function hideFeedback(){feedback.textContent='';feedback.className='feedback'}
+function saveDraft(){
+  try{
+    if(messageInput.value)sessionStorage.setItem(DRAFT_KEY,messageInput.value);
+    else sessionStorage.removeItem(DRAFT_KEY);
+  }catch(error){
+    return;
+  }
+}
+function restoreDraft(){
+  try{
+    const draft=sessionStorage.getItem(DRAFT_KEY);
+    if(draft&&!messageInput.value)messageInput.value=draft.slice(0,MAX_LENGTH);
+  }catch(error){
+    return;
+  }
+}
+function getPendingAnalysis(){
+  try{
+    const text=sessionStorage.getItem(PENDING_ANALYSIS_KEY)||'';
+    return text.length>=MIN_LENGTH?text.slice(0,MAX_LENGTH):'';
+  }catch(error){
+    return '';
+  }
+}
+function setPendingAnalysis(text){
+  try{
+    if(text)sessionStorage.setItem(PENDING_ANALYSIS_KEY,text.slice(0,MAX_LENGTH));
+    else sessionStorage.removeItem(PENDING_ANALYSIS_KEY);
+  }catch(error){
+    return;
+  }
+}
 function getCooldownRemaining(){return Math.max(0,CHECK_COOLDOWN_MS-(Date.now()-lastCheckAt))}
 function isCooldownActive(){return getCooldownRemaining()>0}
 function updateCooldownState(){
@@ -457,12 +504,46 @@ async function loadUsage(){
   }
 }
 
+function showConnectivityNotice(message){
+  connectivityMessage.textContent=message;
+  connectivityStatus.hidden=false;
+}
+
+async function probeConnection(){
+  reconnectTimer=null;
+  if(isOffline||(!connectionUnstable&&!getPendingAnalysis()))return;
+  try{
+    const response=await fetch('/health',{cache:'no-store'});
+    if(!response.ok)throw new Error('Health check failed');
+    connectionUnstable=false;
+    showConnectivityNotice('Kết nối đã ổn định trở lại. ScamCheck đang tiếp tục tiến trình phân tích đã lưu…');
+    usage.textContent='Đang tải số lượt gọi AI của phiên này…';
+    void loadUsage();
+    void resumePendingAnalysis();
+  }catch(error){
+    showConnectivityNotice('Kết nối mạng chưa ổn định. Bác hãy kiểm tra Wi-Fi hoặc dữ liệu di động; nội dung và tiến trình đang chờ vẫn được giữ lại.');
+    reconnectTimer=setTimeout(()=>void probeConnection(),CONNECTION_RETRY_MS);
+  }
+}
+
+function scheduleConnectionProbe(delay=CONNECTION_RETRY_MS){
+  if(reconnectTimer||isOffline)return;
+  reconnectTimer=setTimeout(()=>void probeConnection(),delay);
+}
+
 function updateConnectivityState(){
   isOffline=!navigator.onLine;
-  connectivityStatus.hidden=!isOffline;
   if(isOffline){
+    showConnectivityNotice('Thiết bị đang mất kết nối. Bác hãy kiểm tra Wi-Fi hoặc dữ liệu di động; nội dung đã nhập và tiến trình đang chờ vẫn được giữ lại.');
     usage.textContent='Đang ngoại tuyến. Phân tích sơ bộ trên thiết bị không dùng lượt AI.';
+    if(getPendingAnalysis())connectionUnstable=true;
   }else{
+    if(connectionUnstable||getPendingAnalysis()){
+      showConnectivityNotice('Đã có kết nối trở lại. ScamCheck đang kiểm tra đường truyền để tiếp tục phân tích đã lưu…');
+      scheduleConnectionProbe(250);
+    }else{
+      connectivityStatus.hidden=true;
+    }
     usage.textContent='Đang tải số lượt gọi AI của phiên này…';
     void loadUsage();
   }
@@ -689,8 +770,8 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-messageInput.addEventListener('input',updateInputState);
-clearButton.addEventListener('click',()=>{messageInput.value='';messageInput.focus();updateInputState()});
+messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
+clearButton.addEventListener('click',()=>{messageInput.value='';saveDraft();messageInput.focus();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
 historyDeleteButton.addEventListener('click',openDeleteConfirmation);
@@ -727,6 +808,76 @@ document.addEventListener('keydown',event=>{
     closeDeleteConfirmation();
   }
 });
+async function runAnalysis(submittedText){
+  const controller=new AbortController();
+  setPendingAnalysis('');
+  activeCheckController=controller;
+  checkButton.disabled=true;
+  resultFrame.classList.remove('active');
+
+  try{
+    let payload;
+    if(isOffline){
+      payload=ScamCheckOffline.analyze(submittedText);
+    }else{
+      try{
+        payload=await requestJson("/analyze",{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({text:submittedText,source:'web'}),
+        });
+      }catch(error){
+        if(error.name==='AbortError'||Number.isInteger(error.status))throw error;
+        setPendingAnalysis(submittedText);
+        connectionUnstable=true;
+        const interruptedError=new Error('Kết nối mạng không ổn định. Bác hãy kiểm tra lại kết nối; nội dung và tiến trình phân tích đã được lưu và sẽ tự tiếp tục khi đường truyền ổn định.');
+        interruptedError.networkInterrupted=true;
+        throw interruptedError;
+      }
+    }
+    if(activeCheckController!==controller)return;
+    stopScanAnimation();
+    setPendingAnalysis('');
+    connectionUnstable=false;
+    connectivityStatus.hidden=true;
+    saveHistory(submittedText,payload);
+    lastCheckAt=Date.now();
+    sessionStorage.setItem('scamcheck-last-check-at',String(lastCheckAt));
+    if(payload.usage)updateUsage(payload.usage);
+    showResultFrame(submittedText,payload);
+  }catch(error){
+    stopScanAnimation();
+    processingFrame.classList.remove('active');
+    inputFrame.style.display='block';
+    if(error.name==='AbortError'){
+      setPendingAnalysis('');
+      if(navigator.onLine)connectivityStatus.hidden=true;
+      showFeedback('Đã dừng chờ kết quả. Nếu lượt AI đã bắt đầu, lượt đó vẫn có thể được tính.','info');
+    }else if(error.networkInterrupted){
+      showConnectivityNotice('Kết nối mạng không ổn định. Bác hãy kiểm tra Wi-Fi hoặc dữ liệu di động; ScamCheck đã giữ lại nội dung và tiến trình đang chờ.');
+      showFeedback(error.message,'info');
+      if(navigator.onLine)scheduleConnectionProbe();
+      else updateConnectivityState();
+    }else{
+      setPendingAnalysis('');
+      if(navigator.onLine)connectivityStatus.hidden=true;
+      showFeedback(Number.isInteger(error.status)?error.message:'Không thể kết nối tới máy chủ.');
+    }
+    void loadUsage();
+    messageInput.focus();
+  }finally{
+    isAnalyzing=false;
+    updateCooldownState();
+  }
+}
+
+async function resumePendingAnalysis(){
+  const pendingText=getPendingAnalysis();
+  if(!pendingText||activeCheckController||isOffline||connectionUnstable)return;
+  showFeedback('Đã kết nối lại. ScamCheck đang tiếp tục phân tích tin nhắn đã lưu…','info');
+  await runAnalysis(pendingText);
+}
+
 checkButton.addEventListener('click',async()=>{
   const clean=normalizedValue();
   if(isCooldownActive()){
@@ -745,43 +896,13 @@ checkButton.addEventListener('click',async()=>{
     messageInput.focus();
     return;
   }
-
-  const submittedText=messageInput.value.trim();
-  isAnalyzing=true;
-  checkButton.disabled=true;
-  resultFrame.classList.remove('active');
-
-  try{
-    let payload;
-    if(isOffline){
-      payload=ScamCheckOffline.analyze(submittedText);
-    }else{
-      try{
-        payload=await requestJson("/analyze",{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({text:submittedText,source:'web'}),
-        });
-      }catch(error){
-        if(Number.isInteger(error.status))throw error;
-        payload=ScamCheckOffline.analyze(submittedText);
-      }
-    }
-    saveHistory(submittedText,payload);
-    lastCheckAt=Date.now();
-    sessionStorage.setItem('scamcheck-last-check-at',String(lastCheckAt));
-    if(payload.usage)updateUsage(payload.usage);
-    showResultFrame(submittedText,payload);
-  }catch(error){
-    showFeedback(Number.isInteger(error.status)?error.message:'Không thể kết nối tới máy chủ.');
-    void loadUsage();
-    messageInput.focus();
-  }finally{
-    isAnalyzing=false;
-    updateCooldownState();
-  }
+  await runAnalysis(messageInput.value.trim());
 });
-historyReturnButton.addEventListener('click',()=>{
+cancelCheckButton.addEventListener('click',()=>{
+  setPendingAnalysis('');
+  if(activeCheckController)activeCheckController.abort();
+});
+resultBackButton.addEventListener('click',()=>{
   resultFrame.classList.remove('active');
   inputFrame.style.display='block';
   window.location.hash='history';
@@ -791,4 +912,4 @@ window.addEventListener('online',updateConnectivityState);
 window.addEventListener('offline',updateConnectivityState);
 window.addEventListener('hashchange',()=>switchView(viewFromHash(),{focus:true}));
 if(!window.location.hash)window.history.replaceState(null,'','#analyze');
-setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();switchView(viewFromHash());if(isCooldownActive())updateCooldownState();
+restoreDraft();setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();switchView(viewFromHash());if(isCooldownActive())updateCooldownState();

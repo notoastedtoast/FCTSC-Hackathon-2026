@@ -35,7 +35,7 @@
 
     <div id="connectivity-status" class="connectivity-status" role="status" aria-live="polite" hidden>
       <span class="status-dot" aria-hidden="true"></span>
-      <span>Đang ngoại tuyến. ScamCheck sẽ phân tích sơ bộ ngay trên thiết bị; hãy kiểm tra lại bằng Gemini khi có mạng.</span>
+      <span id="connectivity-message">Đang ngoại tuyến. ScamCheck sẽ phân tích sơ bộ ngay trên thiết bị; hãy kiểm tra lại bằng Gemini khi có mạng.</span>
     </div>
 
     <main id="analyze-view" class="page-view" data-view-panel="analyze" tabindex="-1">
@@ -81,7 +81,7 @@
               <div id="usage" class="usage" aria-live="polite">Đang tải số lượt gọi AI của phiên này…</div>
             </section>
 
-            <section class="tool-card">
+            <section class="tool-card quick-input-card">
               <div class="tool-card-heading">
                 <div>
                   <p class="tool-label">Nhập nhanh</p>
@@ -95,7 +95,7 @@
               <p id="voice-status" class="voice-status" aria-live="polite">Nhấn nút rồi đọc rõ nội dung tin nhắn.</p>
             </section>
 
-            <section class="tool-card">
+            <section class="tool-card sample-card">
               <div class="tool-card-heading">
                 <div>
                   <p class="tool-label">Thử nhanh</p>

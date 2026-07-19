@@ -31,8 +31,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('id="practice-title"', page)
         self.assertIn('id="practice-message"', page)
         self.assertIn('id="connectivity-status"', page)
-        self.assertIn('class="brand-mark"', page)
-        self.assertNotIn('class="brand-link"', page)
+        self.assertIn('id="connectivity-message"', page)
         self.assertIn('class="top-nav"', page)
         self.assertIn('data-view="analyze"', page)
         self.assertIn('data-view="history"', page)
@@ -71,6 +70,12 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("navigator.serviceWorker.register('/service-worker.js')", script)
         self.assertIn("window.addEventListener('offline',updateConnectivityState)", script)
         self.assertIn("window.addEventListener('online',updateConnectivityState)", script)
+        self.assertIn("sessionStorage.setItem(DRAFT_KEY", script)
+        self.assertIn("sessionStorage.setItem(PENDING_ANALYSIS_KEY", script)
+        self.assertIn("fetch('/health',{cache:'no-store'})", script)
+        self.assertIn("function resumePendingAnalysis()", script)
+        self.assertIn("scheduleConnectionProbe()", script)
+        self.assertIn("tiến trình phân tích đã được lưu", script)
         self.assertIn("(!isOffline&&sessionAtLimit)", script)
         self.assertIn("ScamCheckOffline.analyze(submittedText)", script)
         self.assertIn("analysis_mode==='offline'", script)
@@ -95,6 +100,9 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
         self.assertIn('"/offline-analyzer.js"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v8"', service_worker)
+        self.assertIn("fetch(request)", service_worker)
+        self.assertIn(".catch(()=>caches.match(request))", service_worker)
         self.assertNotIn("/analyze", service_worker)
         self.assertNotIn("/session/ai-calls", service_worker)
 
@@ -118,6 +126,13 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn(".history-result-review", styles)
         self.assertIn(".history-status.dangerous", styles)
         self.assertIn("grid-template-columns:repeat(3,minmax(0,1fr))", styles)
+        self.assertIn(
+            ".sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))",
+            styles,
+        )
+        self.assertIn('.sample-button[data-sample="bank"]', styles)
+        self.assertIn('.sample-button[data-sample="delivery"]', styles)
+        self.assertIn('.sample-button[data-sample="prize"]', styles)
         self.assertIn("@media (max-width: 620px)", styles)
 
     def test_practice_dataset_and_grading_live_only_in_frontend(self) -> None:

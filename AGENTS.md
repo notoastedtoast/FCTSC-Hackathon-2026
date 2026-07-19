@@ -396,15 +396,13 @@ message-only entries. Legacy entries clearly show that no saved result is availa
 still be rechecked. No result is regenerated, and the database schema, public response
 shapes, provider prompts, and offline rules did not change.
 
-The result-flow simplification then removed the full-page scan/loading animation, its
-cancel control, and the extra result-header navigation button. The composer stays visible
-and its submit button is disabled while the existing online/offline analysis completes;
-the persistent top “Kiểm tra” navigation reopens the composer after a result. The logo is
-now presentational and no longer links to the analysis view. No API, persistence, provider
-prompt, offline rule, or public response shape changed. No sub-agents were used because
-the markup, client request state, navigation behavior, styles, and frontend contract tests
-formed one small UI flow. A later follow-up restored only a history-specific return button;
-normal analysis results still have no extra result-header action.
+The unstable-connection flow later stopped treating an online request failure as a silent
+offline result. The browser now warns the user to check Wi-Fi or mobile data, keeps the
+composer draft and interrupted analysis text in tab-scoped `sessionStorage`, probes the
+existing `/health` endpoint, and automatically resumes the saved analysis after the
+server is reachable again. An intentionally offline submission still uses the existing
+preliminary on-device analyzer. No API, database, provider prompt, or public response
+shape changed.
 
 ## Handoff checklist
 

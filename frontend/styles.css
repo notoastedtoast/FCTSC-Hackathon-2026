@@ -99,9 +99,12 @@ a{color:inherit}
 .secondary-button.recording{color:var(--danger);background:var(--danger-soft);border-color:var(--danger)}
 .secondary-button:disabled{opacity:.5;cursor:not-allowed}
 .voice-status{min-height:40px;margin:9px 0 0;color:var(--muted);font-size:.8rem;text-align:center}
-.sample-grid{display:flex;flex-wrap:wrap;gap:8px}
-.sample-button{min-height:40px;padding:8px 11px;color:var(--navy-soft);background:var(--surface-soft);border:1px solid var(--border);border-radius:10px;font-size:.82rem;font-weight:750;cursor:pointer}
-.sample-button:hover{color:var(--blue-dark);background:var(--blue-pale);border-color:#bed9f3}
+.sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;align-items:stretch}
+.sample-button{min-width:0;min-height:44px;height:100%;padding:8px 6px;border:1px solid;border-radius:10px;font-size:.76rem;font-weight:800;line-height:1.25;cursor:pointer;box-shadow:0 2px 7px rgba(26,61,95,.05);transition:transform .12s ease,box-shadow .16s ease,filter .16s ease}
+.sample-button[data-sample="bank"]{color:#0d56a4;background:#eaf4ff;border-color:#9fc7ea}
+.sample-button[data-sample="delivery"]{color:#875300;background:#fff4d6;border-color:#e5c36e}
+.sample-button[data-sample="prize"]{color:#694087;background:#f3ebf9;border-color:#cdb4dd}
+.sample-button:hover{filter:saturate(1.08) brightness(.98);box-shadow:0 5px 12px rgba(26,61,95,.1);transform:translateY(-1px)}
 
 .result-frame{display:none;padding-bottom:16px}
 .result-frame.active{display:block}
@@ -249,6 +252,11 @@ button:focus-visible,a:focus-visible,textarea:focus-visible{outline:4px solid rg
   .page-heading h1,.result-header h1{font-size:1.7rem}
   .composer-card,.history-card,.practice-card,.result-section{padding:16px;border-radius:var(--radius-md)}
   .message-input{min-height:230px}
+  .composer-card>.tool-card{margin-top:14px;padding:14px;box-shadow:none}
+  .composer-card>.sample-card{margin-top:10px}
+  .composer-card>.sample-card+.primary-button{margin-top:14px}
+  .sample-grid{gap:6px}
+  .sample-button{padding:8px 5px;font-size:.72rem}
   .result-header{align-items:flex-start}
   .history-return-button{font-size:.78rem}
   .risk-card{grid-template-columns:36px 1fr;padding:16px}
