@@ -22,6 +22,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m9.5 16.2-4-4 1.4-1.4 2.6 2.6 7.6-7.6 1.4 1.4-9 9Z"/></svg>
           <span>Kiểm tra</span>
         </a>
+        <a class="nav-link" href="#library" data-view="library" aria-controls="library-view">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 3a3 3 0 0 0-3 3v13.5A1.5 1.5 0 0 0 3.5 21H20v-2H5a1 1 0 0 1 0-2h15V3H5Zm1 3h10v2H6V6Zm0 4h10v2H6v-2Z"/></svg>
+          <span>Thư viện</span>
+        </a>
         <a class="nav-link" href="#history" data-view="history" aria-controls="history-view">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13 3a9 9 0 1 0 8.5 6H19.4A7 7 0 1 1 13 5v3l4-4-4-4v3Zm-1 4h2v6l5 3-1 1.7-6-3.7V7Z"/></svg>
           <span>Lịch sử</span>
@@ -56,12 +60,17 @@
             </div>
 
             <div class="input-wrap">
-              <textarea id="message" class="message-input" maxlength="10000" aria-describedby="message-feedback character-count" placeholder="Dán nguyên văn tin nhắn vào đây…"></textarea>
+              <textarea id="message" class="message-input" maxlength="10000" aria-describedby="message-feedback character-count voice-status" placeholder="Dán nguyên văn tin nhắn vào đây…"></textarea>
               <button id="clear-button" class="clear-button" type="button" aria-label="Xóa nội dung" title="Xóa nội dung" disabled>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
               </button>
+              <button id="voice-button" class="voice-button" type="button" aria-pressed="false" title="Bật micro">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21H8v2h8v-2h-3v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
+                <span id="voice-button-label" class="visually-hidden">Bật micro</span>
+              </button>
               <div class="input-footer"><span class="minimum-note">Tối thiểu 10 ký tự</span><span id="character-count" class="counter">0 / 10000</span></div>
             </div>
+            <p id="voice-status" class="voice-status" aria-live="polite">Nhấn biểu tượng micro để nhập bằng giọng nói.</p>
             <div id="message-feedback" class="feedback" role="alert" aria-live="polite"></div>
 
             <button id="check-button" class="primary-button" type="button" disabled>
@@ -79,20 +88,6 @@
             <section class="tool-card usage-card">
               <p class="tool-label">Trạng thái phiên</p>
               <div id="usage" class="usage" aria-live="polite">Đang tải số lượt gọi AI của phiên này…</div>
-            </section>
-
-            <section class="tool-card quick-input-card">
-              <div class="tool-card-heading">
-                <div>
-                  <p class="tool-label">Nhập nhanh</p>
-                  <h2>Dùng giọng nói</h2>
-                </div>
-                <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21H8v2h8v-2h-3v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
-              </div>
-              <button id="voice-button" class="secondary-button" type="button">
-                <span id="voice-button-label">Bật micro</span>
-              </button>
-              <p id="voice-status" class="voice-status" aria-live="polite">Nhấn nút rồi đọc rõ nội dung tin nhắn.</p>
             </section>
 
             <section class="tool-card sample-card">
@@ -153,6 +148,92 @@
             </div>
           </div>
         </section>
+      </section>
+    </main>
+
+    <main id="library-view" class="page-view library-view" data-view-panel="library" tabindex="-1" hidden>
+      <section id="library-list-frame">
+        <header class="library-page-header">
+          <a class="library-back-link" href="#analyze" aria-label="Quay lại màn hình kiểm tra">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m15.4 5.4-1.4-1.4-8 8 8 8 1.4-1.4L8.8 12l6.6-6.6Z"/></svg>
+            <span>Quay lại</span>
+          </a>
+          <div class="library-heading-copy">
+            <p class="eyebrow">Nhận biết để phòng tránh</p>
+            <h1>Thư viện các kiểu lừa đảo</h1>
+            <p>Xem các hình thức lừa đảo thường gặp để nhận biết và phòng tránh.</p>
+          </div>
+        </header>
+
+        <section class="library-controls" aria-labelledby="library-filter-title">
+          <label class="library-search-label" for="library-search">Tìm kiếm trong thư viện</label>
+          <div class="library-search-wrap">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.5 3a7.5 7.5 0 1 0 4.7 13.3L20.9 22l1.4-1.4-5.7-5.7A7.5 7.5 0 0 0 10.5 3Zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z"/></svg>
+            <input id="library-search" class="library-search" type="search" placeholder="Tìm kiểu lừa đảo" autocomplete="off" />
+          </div>
+          <h2 id="library-filter-title" class="library-filter-title">Lọc theo nhóm</h2>
+          <div class="library-filters" role="group" aria-label="Lọc kiểu lừa đảo theo nhóm">
+            <button class="library-filter active" type="button" data-scam-group="all" aria-pressed="true">Tất cả</button>
+            <button class="library-filter" type="button" data-scam-group="fake_bank" aria-pressed="false">Giả ngân hàng</button>
+            <button class="library-filter" type="button" data-scam-group="fake_police" aria-pressed="false">Giả công an</button>
+            <button class="library-filter" type="button" data-scam-group="prize" aria-pressed="false">Trúng thưởng</button>
+            <button class="library-filter" type="button" data-scam-group="fake_delivery" aria-pressed="false">Giả giao hàng</button>
+          </div>
+        </section>
+
+        <div class="library-list-heading">
+          <h2>Các kiểu lừa đảo phổ biến</h2>
+          <p id="library-result-count" aria-live="polite">Đang tải thư viện…</p>
+        </div>
+        <div id="library-load-error" class="library-load-error" role="alert" hidden>
+          <p>Không thể tải thư viện lúc này. Bác hãy kiểm tra kết nối rồi thử lại.</p>
+          <button id="library-retry-button" type="button">Thử lại</button>
+        </div>
+        <div id="scam-type-list" class="scam-type-list" aria-live="polite"></div>
+        <section id="library-empty" class="library-empty" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.5 3a7.5 7.5 0 1 0 4.7 13.3L20.9 22l1.4-1.4-5.7-5.7A7.5 7.5 0 0 0 10.5 3Zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z"/></svg>
+          <h2>Không tìm thấy kiểu lừa đảo phù hợp.</h2>
+          <button id="library-reset-button" type="button">Xem tất cả</button>
+        </section>
+      </section>
+
+      <section id="library-detail-frame" class="library-detail-frame" hidden>
+        <button id="library-detail-back" class="library-detail-back" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m15.4 5.4-1.4-1.4-8 8 8 8 1.4-1.4L8.8 12l6.6-6.6Z"/></svg>
+          <span>Quay lại danh sách</span>
+        </button>
+        <div id="library-detail-error" class="library-load-error" role="alert" hidden>
+          <p>Không thể tải thông tin chi tiết. Bác hãy quay lại danh sách và thử lại.</p>
+        </div>
+        <article id="library-detail-content" class="library-detail-content" hidden>
+          <header class="library-detail-hero">
+            <div id="library-detail-icon" class="library-detail-icon" aria-hidden="true"></div>
+            <div>
+              <div class="library-detail-meta"><span id="library-detail-group"></span><span class="library-warning-badge">Cần cảnh giác</span></div>
+              <h1 id="library-detail-title"></h1>
+              <p id="library-detail-description"></p>
+            </div>
+          </header>
+          <div class="library-detail-grid">
+            <section class="library-detail-section">
+              <h2>Dấu hiệu nhận biết</h2>
+              <ul id="library-detail-signs"></ul>
+            </section>
+            <section class="library-detail-section library-example-section">
+              <h2>Ví dụ thường gặp</h2>
+              <blockquote id="library-detail-example"></blockquote>
+            </section>
+            <section class="library-detail-section library-do-section">
+              <h2>Bạn nên làm gì?</h2>
+              <ul id="library-detail-do"></ul>
+            </section>
+            <section class="library-detail-section library-dont-section">
+              <h2>Không nên làm</h2>
+              <ul id="library-detail-dont"></ul>
+            </section>
+          </div>
+          <a class="library-main-link" href="#analyze">Quay lại kiểm tra tin nhắn</a>
+        </article>
       </section>
     </main>
 

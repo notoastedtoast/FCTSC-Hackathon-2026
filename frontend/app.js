@@ -2,10 +2,12 @@ const CHECK_COOLDOWN_MS=5000,MIN_LENGTH=10,MAX_LENGTH=10000,DRAFT_KEY='scamcheck
 const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),connectivityMessage=document.getElementById('connectivity-message'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),historyReturnButton=document.getElementById('history-return-button'),resultContextLabel=document.getElementById('result-context-label'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
 const psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
 const practiceContent=document.getElementById('practice-content'),practiceMessage=document.getElementById('practice-message'),practiceProgress=document.getElementById('practice-progress'),practiceScore=document.getElementById('practice-score'),practiceAnswerButtons=document.querySelectorAll('.practice-answer-button'),practiceFeedback=document.getElementById('practice-feedback'),practiceNextButton=document.getElementById('practice-next-button');
+const libraryListFrame=document.getElementById('library-list-frame'),libraryDetailFrame=document.getElementById('library-detail-frame'),librarySearch=document.getElementById('library-search'),libraryFilters=document.querySelectorAll('.library-filter'),libraryResultCount=document.getElementById('library-result-count'),libraryLoadError=document.getElementById('library-load-error'),libraryRetryButton=document.getElementById('library-retry-button'),scamTypeList=document.getElementById('scam-type-list'),libraryEmpty=document.getElementById('library-empty'),libraryResetButton=document.getElementById('library-reset-button'),libraryDetailBack=document.getElementById('library-detail-back'),libraryDetailError=document.getElementById('library-detail-error'),libraryDetailContent=document.getElementById('library-detail-content'),libraryDetailIcon=document.getElementById('library-detail-icon'),libraryDetailGroup=document.getElementById('library-detail-group'),libraryDetailTitle=document.getElementById('library-detail-title'),libraryDetailDescription=document.getElementById('library-detail-description'),libraryDetailSigns=document.getElementById('library-detail-signs'),libraryDetailExample=document.getElementById('library-detail-example'),libraryDetailDo=document.getElementById('library-detail-do'),libraryDetailDont=document.getElementById('library-detail-dont');
 const navLinks=document.querySelectorAll('.nav-link[data-view]'),pageViews=document.querySelectorAll('[data-view-panel]');
-const toolsColumn=document.querySelector('.tools-column'),mobileQuickCards=document.querySelectorAll('.quick-input-card,.sample-card'),mobileLayoutQuery=window.matchMedia('(max-width: 620px)');
+const toolsColumn=document.querySelector('.tools-column'),mobileQuickCards=document.querySelectorAll('.sample-card'),mobileLayoutQuery=window.matchMedia('(max-width: 620px)');
 let lastCheckAt=Number(sessionStorage.getItem('scamcheck-last-check-at')||0),cooldownTimer=null,recognition=null,isRecording=false,selectedHistoryIds=new Set(),analysisController=null,sessionAtLimit=false,isOffline=!navigator.onLine,connectionInterrupted=false;
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
+let scamTypes=[],scamTypesPromise=null,selectedScamGroup='all',libraryQuery='',libraryScrollPosition=0;
 const samples={bank:'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',delivery:'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',prize:'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.'};
 const practicePrompts=[
   {
@@ -69,12 +71,36 @@ const practicePrompts=[
     "reason":"Đây là lịch đón cụ thể phù hợp ngữ cảnh, không có yêu cầu tiền, dữ liệu hoặc hành động khẩn cấp bất thường."
   }
 ];
+const scamGroupDetails={
+  fake_bank:{
+    label:'Giả ngân hàng',
+    iconPath:'M4 10h16v9H4v-9Zm2 2v5h2v-5H6Zm5 0v5h2v-5h-2Zm5 0v5h2v-5h-2ZM3 7l9-5 9 5v2H3V7Z',
+    signs:['Tự xưng là nhân viên ngân hàng và tạo áp lực phải xử lý ngay.','Yêu cầu cung cấp mật khẩu, thông tin thẻ hoặc mã OTP.','Gửi đường dẫn có tên miền gần giống nhưng không phải website chính thức.','Đề nghị cài ứng dụng hoặc chia sẻ màn hình để “hỗ trợ” tài khoản.']
+  },
+  fake_police:{
+    label:'Giả công an',
+    iconPath:'M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5l-8-3Zm0 4 4 1.5V11c0 3.2-1.8 6.2-4 7.3-2.2-1.1-4-4.1-4-7.3V7.5L12 6Z',
+    signs:['Thông báo bác liên quan vụ án, lệnh bắt hoặc khoản tiền bất hợp pháp.','Yêu cầu giữ bí mật, không nói với người thân hay cơ quan địa phương.','Đòi chuyển tiền vào tài khoản để kiểm tra hoặc chứng minh trong sạch.','Gửi giấy tờ qua mạng và ép cài ứng dụng lạ để làm việc từ xa.']
+  },
+  prize:{
+    label:'Trúng thưởng',
+    iconPath:'M20 6h-2.2A3 3 0 0 0 12 4.9 3 3 0 0 0 6.2 6H4a2 2 0 0 0-2 2v3h9V8h2v3h9V8a2 2 0 0 0-2-2Zm-5-2a1 1 0 0 1 0 2h-2c0-1.1.9-2 2-2ZM9 4c1.1 0 2 .9 2 2H9a1 1 0 0 1 0-2ZM3 13h8v9H5a2 2 0 0 1-2-2v-7Zm10 0h8v7a2 2 0 0 1-2 2h-6v-9Z',
+    signs:['Thông báo nhận giải dù bác không tham gia chương trình nào.','Yêu cầu đóng thuế, phí hồ sơ, phí vận chuyển hoặc phí kích hoạt trước.','Mạo danh thương hiệu lớn nhưng liên hệ bằng tài khoản cá nhân.','Gửi biểu mẫu hoặc đường link đòi giấy tờ, thông tin thẻ hay mã xác thực.']
+  },
+  fake_delivery:{
+    label:'Giả giao hàng',
+    iconPath:'M3 5h12v4h3l3 4v6h-2.2a3 3 0 0 1-5.6 0H9.8a3 3 0 0 1-5.6 0H3V5Zm2 2v8.2A3 3 0 0 1 9.8 17h3.4c.4-.8 1-1.4 1.8-1.7V7H5Zm12 4v4.2c.8.3 1.4.9 1.8 1.8H19v-3.3L17 11ZM7 17a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z',
+    signs:['Thông báo một đơn hàng bác không đặt hoặc thông tin giao hàng mơ hồ.','Yêu cầu chuyển khoản trước một khoản phí nhỏ để giao lại hoặc hủy đơn.','Gửi đường dẫn thanh toán không thuộc ứng dụng hay website đã mua hàng.','Xin mã OTP, thông tin ngân hàng hoặc yêu cầu quét mã QR để nhận hàng.']
+  }
+};
+const librarySafeActions=['Bình tĩnh, dừng lại và kiểm tra yêu cầu qua kênh chính thức.','Tự tìm số điện thoại của ngân hàng, cơ quan hoặc đơn vị vận chuyển để xác minh.','Kiểm tra kỹ tên người gửi, tên miền và thông tin chương trình.','Báo cho người thân hoặc cơ quan chức năng khi thấy dấu hiệu đe dọa.'];
+const libraryUnsafeActions=['Không cung cấp mật khẩu, mã OTP hoặc thông tin thẻ.','Không chuyển tiền theo yêu cầu của người lạ.','Không cài ứng dụng từ đường link hoặc tệp không rõ nguồn gốc.','Không bấm vào đường link đáng ngờ trong tin nhắn.'];
 const normalizedValue=()=>messageInput.value.replace(/\s+/g,' ').trim();
-const viewTitles={analyze:'Kiểm tra',history:'Lịch sử',practice:'Luyện tập'};
+const viewTitles={analyze:'Kiểm tra',library:'Thư viện lừa đảo',history:'Lịch sử',practice:'Luyện tập'};
 
 function syncQuickInputLayout(){
   if(mobileLayoutQuery.matches){
-    mobileQuickCards.forEach(card=>checkButton.before(card));
+    mobileQuickCards.forEach(card=>checkButton.after(card));
     return;
   }
   mobileQuickCards.forEach(card=>toolsColumn.append(card));
@@ -84,8 +110,20 @@ syncQuickInputLayout();
 mobileLayoutQuery.addEventListener('change',syncQuickInputLayout);
 
 function viewFromHash(){
+  return routeFromHash().view;
+}
+
+function routeFromHash(){
   const candidate=window.location.hash.slice(1);
-  return Object.hasOwn(viewTitles,candidate)?candidate:'analyze';
+  if(candidate==='library')return {view:'library',detailId:null};
+  if(candidate.startsWith('library/')){
+    try{
+      return {view:'library',detailId:decodeURIComponent(candidate.slice(8))};
+    }catch(error){
+      return {view:'library',detailId:null};
+    }
+  }
+  return {view:Object.hasOwn(viewTitles,candidate)?candidate:'analyze',detailId:null};
 }
 
 function switchView(view,{focus=false}={}){
@@ -161,7 +199,7 @@ function updateUsage(aiUsage){
   updateInputState();
 }
 function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;clearButton.disabled=rawLength===0;checkButton.disabled=Boolean(analysisController)||isOffline||sessionAtLimit||!(clean.length>=MIN_LENGTH&&!isCooldownActive());if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{if(!isCooldownActive())hideFeedback();messageInput.removeAttribute('aria-invalid')}}
-function setupSpeechRecognition(){const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Bạn vẫn có thể nhập hoặc dán nội dung.';return}recognition=new SpeechRecognition();recognition.lang='vi-VN';recognition.interimResults=true;recognition.continuous=true;let finalTranscript='';recognition.onstart=()=>{isRecording=true;finalTranscript='';voiceButton.classList.add('recording');voiceButtonLabel.textContent='Tắt micro';voiceStatus.textContent='Đang ghi âm… Hãy đọc rõ nội dung tin nhắn.'};recognition.onresult=(event)=>{let interimTranscript='';for(let i=event.resultIndex;i<event.results.length;i++){const transcript=event.results[i][0].transcript;if(event.results[i].isFinal)finalTranscript+=transcript+' ';else interimTranscript+=transcript}const combined=`${finalTranscript}${interimTranscript}`.trim();if(combined){const base=messageInput.dataset.beforeVoice||'';messageInput.value=base?`${base} ${combined}`:combined;messageInput.dispatchEvent(new Event('input'))}};recognition.onerror=(event)=>{isRecording=false;voiceButton.classList.remove('recording');voiceButtonLabel.textContent='Bật micro';if(event.error==='not-allowed'||event.error==='service-not-allowed')voiceStatus.textContent='Không thể dùng micro vì quyền truy cập đã bị từ chối. Bạn vẫn có thể nhập nội dung bằng bàn phím.';else if(event.error==='no-speech')voiceStatus.textContent='Chưa nhận được giọng nói. Vui lòng thử lại và nói gần micro hơn.';else voiceStatus.textContent='Tính năng giọng nói tạm thời chưa hoạt động. Vui lòng nhập nội dung thủ công.'};recognition.onend=()=>{isRecording=false;voiceButton.classList.remove('recording');voiceButtonLabel.textContent='Bật micro';if(!voiceStatus.textContent.includes('từ chối')&&!voiceStatus.textContent.includes('tạm thời')&&!voiceStatus.textContent.includes('Chưa nhận'))voiceStatus.textContent='Đã dừng ghi âm.';delete messageInput.dataset.beforeVoice}}
+function setupSpeechRecognition(){const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Bạn vẫn có thể nhập hoặc dán nội dung.';return}recognition=new SpeechRecognition();recognition.lang='vi-VN';recognition.interimResults=true;recognition.continuous=true;let finalTranscript='';recognition.onstart=()=>{isRecording=true;finalTranscript='';voiceButton.classList.add('recording');voiceButton.setAttribute('aria-pressed','true');voiceButton.title='Tắt micro';voiceButtonLabel.textContent='Tắt micro';voiceStatus.textContent='Đang ghi âm… Hãy đọc rõ nội dung tin nhắn.'};recognition.onresult=(event)=>{let interimTranscript='';for(let i=event.resultIndex;i<event.results.length;i++){const transcript=event.results[i][0].transcript;if(event.results[i].isFinal)finalTranscript+=transcript+' ';else interimTranscript+=transcript}const combined=`${finalTranscript}${interimTranscript}`.trim();if(combined){const base=messageInput.dataset.beforeVoice||'';messageInput.value=base?`${base} ${combined}`:combined;messageInput.dispatchEvent(new Event('input'))}};recognition.onerror=(event)=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(event.error==='not-allowed'||event.error==='service-not-allowed')voiceStatus.textContent='Không thể dùng micro vì quyền truy cập đã bị từ chối. Bạn vẫn có thể nhập nội dung bằng bàn phím.';else if(event.error==='no-speech')voiceStatus.textContent='Chưa nhận được giọng nói. Vui lòng thử lại và nói gần micro hơn.';else voiceStatus.textContent='Tính năng giọng nói tạm thời chưa hoạt động. Vui lòng nhập nội dung thủ công.'};recognition.onend=()=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(!voiceStatus.textContent.includes('từ chối')&&!voiceStatus.textContent.includes('tạm thời')&&!voiceStatus.textContent.includes('Chưa nhận'))voiceStatus.textContent='Đã dừng ghi âm.';delete messageInput.dataset.beforeVoice}}
 function getHistory(){
   try{
     const data=JSON.parse(localStorage.getItem('scamcheck-history')||'[]');
@@ -735,6 +773,29 @@ historyDeleteButton.addEventListener('click',openDeleteConfirmation);
 deleteCancelButton.addEventListener('click',closeDeleteConfirmation);
 deleteConfirmButton.addEventListener('click',confirmDeleteSelectedHistory);
 deleteConfirmModal.addEventListener('click',event=>{if(event.target===deleteConfirmModal)closeDeleteConfirmation()});
+librarySearch.addEventListener('input',()=>{
+  libraryQuery=librarySearch.value.trim();
+  renderScamTypeList();
+});
+libraryFilters.forEach(button=>button.addEventListener('click',()=>{
+  selectedScamGroup=button.dataset.scamGroup||'all';
+  renderScamTypeList();
+}));
+libraryResetButton.addEventListener('click',()=>{
+  selectedScamGroup='all';
+  libraryQuery='';
+  librarySearch.value='';
+  renderScamTypeList();
+  librarySearch.focus();
+});
+libraryRetryButton.addEventListener('click',()=>void loadScamTypes({force:true}));
+libraryDetailBack.addEventListener('click',()=>{
+  if(window.history.state?.scamLibraryFromList){
+    window.history.back();
+    return;
+  }
+  window.location.hash='library';
+});
 navLinks.forEach(link=>link.addEventListener('click',event=>{
   const target=link.dataset.view;
   if(target==='analyze'&&resultFrame.classList.contains('active')){
@@ -742,7 +803,7 @@ navLinks.forEach(link=>link.addEventListener('click',event=>{
   }
   if(window.location.hash===`#${target}`){
     event.preventDefault();
-    switchView(target,{focus:true});
+    syncRoute({focus:true});
   }
 }));
 practiceAnswerButtons.forEach(button=>button.addEventListener('click',()=>{
@@ -822,6 +883,160 @@ async function runAnalysis(submittedText){
   }
 }
 
+function createLibraryIcon(group,className=''){
+  const details=scamGroupDetails[group]||scamGroupDetails.fake_bank;
+  const wrapper=document.createElement('span');
+  wrapper.className=`library-icon ${group} ${className}`.trim();
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 24 24');
+  svg.setAttribute('aria-hidden','true');
+  const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('fill','currentColor');
+  path.setAttribute('d',details.iconPath);
+  svg.appendChild(path);
+  wrapper.appendChild(svg);
+  return wrapper;
+}
+
+function appendLibraryItems(container,items){
+  container.replaceChildren();
+  items.forEach(textValue=>{
+    const item=document.createElement('li');
+    item.textContent=textValue;
+    container.appendChild(item);
+  });
+}
+
+function normalizedSearchText(value){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('vi-VN');
+}
+
+function renderScamTypeList(){
+  const query=normalizedSearchText(libraryQuery);
+  const visible=scamTypes.filter(item=>{
+    const inGroup=selectedScamGroup==='all'||item.group===selectedScamGroup;
+    const searchable=normalizedSearchText(`${item.name} ${item.description}`);
+    return inGroup&&(!query||searchable.includes(query));
+  });
+
+  libraryFilters.forEach(button=>{
+    const active=button.dataset.scamGroup===selectedScamGroup;
+    button.classList.toggle('active',active);
+    button.setAttribute('aria-pressed',String(active));
+  });
+  scamTypeList.replaceChildren();
+  visible.forEach(item=>{
+    const details=scamGroupDetails[item.group]||scamGroupDetails.fake_bank;
+    const card=document.createElement('button');
+    card.type='button';
+    card.className='scam-type-card';
+    card.setAttribute('aria-label',`Xem chi tiết: ${item.name}`);
+    const icon=createLibraryIcon(item.group);
+    const body=document.createElement('span');
+    body.className='scam-type-card-body';
+    const group=document.createElement('span');
+    group.className=`scam-group-label ${item.group}`;
+    group.textContent=details.label;
+    const title=document.createElement('span');
+    title.className='scam-type-card-title';
+    title.textContent=item.name;
+    const description=document.createElement('span');
+    description.className='scam-type-card-description';
+    description.textContent=item.description;
+    const action=document.createElement('span');
+    action.className='scam-type-card-action';
+    action.textContent='Xem chi tiết →';
+    body.append(group,title,description,action);
+    card.append(icon,body);
+    card.addEventListener('click',()=>{
+      libraryScrollPosition=window.scrollY;
+      window.history.pushState({scamLibraryFromList:true},'',`#library/${encodeURIComponent(item.id)}`);
+      syncRoute({focus:true});
+    });
+    scamTypeList.appendChild(card);
+  });
+  libraryResultCount.textContent=`${visible.length} kiểu lừa đảo`;
+  libraryEmpty.hidden=visible.length!==0;
+}
+
+async function loadScamTypes({force=false}={}){
+  if(scamTypes.length&&!force){
+    renderScamTypeList();
+    return scamTypes;
+  }
+  if(scamTypesPromise&&!force)return scamTypesPromise;
+  libraryLoadError.hidden=true;
+  libraryResultCount.textContent='Đang tải thư viện…';
+  scamTypeList.replaceChildren();
+  libraryEmpty.hidden=true;
+  scamTypesPromise=(async()=>{
+    try{
+      const payload=await requestJson('/scam-types');
+      scamTypes=Array.isArray(payload)?payload:[];
+      renderScamTypeList();
+      return scamTypes;
+    }catch(error){
+      scamTypes=[];
+      libraryResultCount.textContent='Chưa tải được dữ liệu';
+      libraryLoadError.hidden=false;
+      return [];
+    }finally{
+      scamTypesPromise=null;
+    }
+  })();
+  return scamTypesPromise;
+}
+
+function showLibraryList(){
+  libraryDetailFrame.hidden=true;
+  libraryListFrame.hidden=false;
+  void loadScamTypes().then(()=>{
+    requestAnimationFrame(()=>window.scrollTo({top:libraryScrollPosition,behavior:'auto'}));
+  });
+}
+
+async function showLibraryDetail(detailId){
+  libraryListFrame.hidden=true;
+  libraryDetailFrame.hidden=false;
+  libraryDetailContent.hidden=true;
+  libraryDetailError.hidden=true;
+  libraryDetailBack.focus({preventScroll:true});
+  window.scrollTo({top:0,behavior:'smooth'});
+  try{
+    const item=await requestJson(`/scam-types/${encodeURIComponent(detailId)}`);
+    const currentRoute=routeFromHash();
+    if(currentRoute.view!=='library'||currentRoute.detailId!==detailId)return;
+    const details=scamGroupDetails[item.group]||scamGroupDetails.fake_bank;
+    libraryDetailIcon.replaceChildren(createLibraryIcon(item.group,'large'));
+    libraryDetailGroup.textContent=details.label;
+    libraryDetailGroup.className=`scam-group-label ${item.group}`;
+    libraryDetailTitle.textContent=item.name;
+    libraryDetailDescription.textContent=item.description;
+    libraryDetailExample.textContent=item.example_message;
+    appendLibraryItems(libraryDetailSigns,details.signs);
+    appendLibraryItems(libraryDetailDo,librarySafeActions);
+    appendLibraryItems(libraryDetailDont,libraryUnsafeActions);
+    libraryDetailContent.hidden=false;
+    document.title=`${item.name} · ScamCheck`;
+  }catch(error){
+    const currentRoute=routeFromHash();
+    if(currentRoute.view==='library'&&currentRoute.detailId===detailId)libraryDetailError.hidden=false;
+  }
+}
+
+function syncLibraryRoute(){
+  const route=routeFromHash();
+  if(route.view!=='library')return;
+  if(route.detailId)void showLibraryDetail(route.detailId);
+  else showLibraryList();
+}
+
+function syncRoute({focus=false}={}){
+  const route=routeFromHash();
+  switchView(route.view,{focus});
+  if(route.view==='library')syncLibraryRoute();
+}
+
 checkButton.addEventListener('click',async()=>{
   const clean=normalizedValue();
   if(isCooldownActive()){
@@ -850,6 +1065,6 @@ historyReturnButton.addEventListener('click',()=>{
 });
 window.addEventListener('online',updateConnectivityState);
 window.addEventListener('offline',updateConnectivityState);
-window.addEventListener('hashchange',()=>switchView(viewFromHash(),{focus:true}));
+window.addEventListener('hashchange',()=>syncRoute({focus:true}));
 if(!window.location.hash)window.history.replaceState(null,'','#analyze');
-restoreDraft();setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();switchView(viewFromHash());if(isCooldownActive())updateCooldownState();
+restoreDraft();setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();syncRoute();if(isCooldownActive())updateCooldownState();

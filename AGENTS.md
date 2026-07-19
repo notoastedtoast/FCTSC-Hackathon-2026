@@ -96,7 +96,8 @@ The browser keeps the composer visible and disables its submit button while a ch
 progress; it has no separate processing animation or browser-cancel control. A successful
 submission is added to a ten-item localStorage history; deleting that browser-local copy
 does not delete the SQLite analysis. The persistent top navigation uses `#analyze`,
-`#history`, and `#practice` views. The logo is presentational rather than a navigation link,
+`#library`, `#history`, and `#practice` views. Library detail state uses
+`#library/{scam_type_id}`. The logo is presentational rather than a navigation link,
 and the result header has no extra “check another message” button. A “Trở lại lịch sử”
 button appears only while reviewing a saved history result.
 History is a dedicated page rather than a dialog; its “Kiểm tra lại” action copies a local
@@ -118,6 +119,10 @@ error; the composer draft remains in tab-scoped `sessionStorage` for a manual re
 - The four required scam groups and twelve authored records live in
   `src/data/scam_types.json`; do not duplicate a client-side catalog.
 - `src/catalog.py` validates catalog data at import and owns filtering and detail lookup.
+- The frontend library loads the list from `/scam-types` and each selected detail from
+  `/scam-types/{scam_type_id}`. Search and group filtering run on the loaded list without
+  navigation or reload; group-level safety guidance may live in the client but authored
+  catalog records must not be copied there.
 - Link and message assessment belongs only to the provider-backed `/analyze` call. The
   browser must not produce a local risk assessment while offline.
 
@@ -233,18 +238,19 @@ legacy-schema test in `tests/test_database.py`.
 ### Commands, UI, and repository metadata
 
 - `frontend/index.html`: accessible application shell with persistent top navigation,
-  separate analysis/history/practice views, result state, connectivity notice,
-  and references to the browser assets.
+  separate analysis/library/history/practice views, library list/detail frames, result
+  state, connectivity notice, an icon-only voice control inside the message field, and
+  references to the browser assets.
 - `frontend/styles.css`: mobile-first page styling, the automatic 900px+ widescreen
-  analysis workspace, responsive navigation and result/history/practice layouts, focus
-  states, and reduced-motion behavior.
+  analysis workspace, responsive navigation and result/library/history/practice layouts,
+  focus states, and reduced-motion behavior.
 - `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
   handling, safe result rendering,
-  voice input, browser-local recent-message history, and the local
-  recognition prompts/grading/score. It registers the offline shell service worker and
+  voice input, browser-local recent-message history, the API-backed scam library, and the
+  local recognition prompts/grading/score. It registers the offline shell service worker,
   rejects analysis while disconnected, owns hash-based view switching, and supports
   reusing a history item in the composer. It contains no direct character API call, chat
-  UI, or offline risk engine.
+  UI, duplicated scam catalog, or offline risk engine.
 - `frontend/service-worker.js`: versioned cache for the root page, stylesheet, browser
   scripts, and logo only. It does not intercept or cache API requests or user data.
 - `frontend/scamcheck-logo.png`: the only standalone visual asset used by the page.
@@ -396,6 +402,18 @@ offline result. It initially stored interrupted analysis state and automatically
 after probing `/health`; the 2026-07-19 change above replaced that behavior with an explicit
 error and manual retry while preserving only the ordinary composer draft. No API, database,
 provider prompt, or public response shape changed.
+
+The voice-input control was later condensed from a separate tool card into an icon-only
+microphone button inside the message field. Its accessible label, recording state, and
+status text remain available, while the speech-recognition behavior and API flow are
+unchanged. No database schema, public response shape, or provider prompt changed.
+
+The scam-type library was later added as a fourth hash-routed frontend view. It loads the
+existing twelve-record backend catalog, filters and searches the loaded list in place, and
+loads selected details through the existing detail endpoint. Detail pages add group-level
+recognition and safety guidance, preserve list filter state and scroll position, and use
+browser-compatible hash navigation without duplicating catalog records. No endpoint,
+database schema, public response shape, provider prompt, or catalog data changed.
 
 ## Handoff checklist
 
