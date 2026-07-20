@@ -82,11 +82,15 @@ handler specific to `/analyze`; it also handles path parameters.
    `detective` audit row when a slot remains, and returns authoritative `used`/`limit`
    usage. A full session receives 429 without a provider call.
 5. `ScamAnalyzer.analyze` tries the primary Gemini model, the secondary Gemini model, then
-   Groq when `GROQ_API_KEY` is configured. The total timeout is divided among available
-   targets so one hanging model cannot consume the fallback budget. HTTP errors, timeouts,
-   missing content, and schema-invalid output advance immediately without retry sleeps. If
-   every transport fails the call becomes `AnalysisError`; if at least one target responds
-   but all responses are malformed, Detective uses the conservative suspicious fallback.
+   Groq when `GROQ_API_KEY` is configured. A deadline-aware weighted allocation gives every
+   remaining target a bounded share and carries unused time forward without exceeding the
+   total timeout. Groq uses strict JSON Schema (all object fields required and closed) and a
+   minimum completion budget. HTTP errors, timeouts, missing content, and schema-invalid
+   output advance immediately without retry sleeps. Safe logs include provider/model,
+   elapsed/allocated time, HTTP status or validation locations, but never prompt, generated
+   content, submitted text, or credentials. If every transport fails the call becomes
+   `AnalysisError`; if at least one target responds but all responses are malformed,
+   Detective uses the conservative suspicious fallback.
 6. The validated provider `risk_level` becomes the Detective risk unchanged. If malformed
    provider content across the chain triggers the conservative fallback, its risk is
    `suspicious`.
@@ -215,8 +219,9 @@ Changing these tables requires a backward-compatible PostgreSQL migration in
   catalog contracts, twelve ordered scam scenario codes, default actions, and model-level
   consistency checks. Provider-only schemas belong in `analyzer.py`, not here.
 - `src/analyzer.py`: ordered Gemini/Groq transports, provider response schemas, prompts,
-  divided timeout budgets, structured-response validation, conservative fallback analysis,
-  safe user-facing provider errors, and character voice validation. `_generate` tries each
+  deadline-aware weighted timeout budgets, strict Groq structured output, redacted failure
+  diagnostics, conservative fallback analysis, safe user-facing provider errors, and
+  character voice validation. `_generate` tries each
   distinct configured target once and never logs raw submitted text or credentials.
 - `src/catalog.py`: validated static catalog access and filtering.
 - `src/data/scam_types.json`: twelve authored scam types; exactly three entries in each of
@@ -243,9 +248,10 @@ Changing these tables requires a backward-compatible PostgreSQL migration in
   the absence of a practice API, session quota/auditing, automatic character fallback,
   429/502/503 mapping, and five credential-gated live Gemini cases in
   `LiveGeminiApiTests`.
-- `tests/test_analyzer.py`: mocked HTTP tests for Gemini/Groq request schemas, ordered
-  transport/timeout/schema fallbacks, conservative fallback behavior, character voice
-  enforcement, and prompt injection isolation.
+- `tests/test_analyzer.py`: mocked HTTP tests for Gemini/Groq request schemas (including
+  Groq strict-mode closure), ordered transport/adaptive-timeout/schema fallbacks, redacted
+  failure diagnostics, conservative fallback behavior, character voice enforcement, and
+  prompt injection isolation.
 - `tests/test_database.py`: repository save/get behavior, PostgreSQL migration SQL coverage,
   the embedded test-backend legacy migration, and session-scoped idempotency claims.
 - `tests/test_config.py`: default, override, and invalid session-call-limit configuration.
@@ -400,7 +406,7 @@ Detective and character calls each consume one reservation; PostgreSQL rejects r
 atomically at the ceiling, `/analyze` returns a polite 429 before contacting a provider,
 and usage responses contain both `used` and `limit`. The frontend displays the fraction
 and disables analysis at the ceiling. Existing per-call timeouts remain 12 seconds for
-the Detective and 6 seconds for the character.
+the Detective and 7.5 seconds for the character.
 
 The recognition exercise was then integrated into the current frontend and moved fully
 out of the backend at the user's request. Its ten prompts, labels, explanations, grading,
@@ -460,6 +466,19 @@ were removed because all provider transport already uses `httpx` and no authenti
 password hashing exists. The UI now labels saved online results generically rather than as
 Gemini-only, and the service-worker shell version was bumped. The API response shape,
 database schema, quota semantics, offline rules, and provider prompts did not change.
+
+The provider chain was then hardened after live failures exposed three independent causes.
+Groq GPT-OSS now receives a recursively closed strict JSON Schema and at least 1,024
+completion tokens, reducing incomplete or structurally invalid responses. Each attempt gets
+a weighted share of the current remaining deadline, so fast failures donate their unused
+time to later targets while the overall call remains bounded. Provider failure logs now
+record only target identity, elapsed and allocated seconds, and a safe HTTP/timeout/schema
+summary. The optional Cô tâm lý deadline increased to 7.5 seconds while keeping the worst
+sequential Detective-plus-character budget below 20 seconds. Its user prompt now repeats
+the configured required and forbidden voice terms because live Groq output could satisfy the
+schema while omitting `cô` or `bác`; server-side voice validation remains authoritative. The
+frontend, database schema, public response shape, quota semantics, offline rules, and
+Detective prompt did not change.
 
 The later merge of the Detective presentation added a separately served avatar, sequential
 result-message bubbles, risk-aware evidence highlighting, and suppression of the Cô tâm lý

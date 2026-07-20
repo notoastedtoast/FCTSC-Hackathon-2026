@@ -9,6 +9,7 @@ from src.analyzer import (
     AnalysisError,
     CharacterError,
     DETECTIVE_TIMEOUT_SECONDS,
+    GROQ_MIN_COMPLETION_TOKENS,
     GeneratedScamAnalysis,
     ScamAnalyzer,
     parse_detective_response,
@@ -285,9 +286,11 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         attempted_models: list[str] = []
+        timeout_budgets: list[float] = []
 
         async def handler(request: httpx.Request) -> httpx.Response:
             attempted_models.append(str(request.url))
+            timeout_budgets.append(request.extensions["timeout"]["read"])
             if "gemini-primary" in str(request.url):
                 return httpx.Response(503, request=request)
             return httpx.Response(200, json=gemini_response(valid_detective_json()))
@@ -309,6 +312,8 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(attempted_models), 2)
         self.assertIn("gemini-primary", attempted_models[0])
         self.assertIn("gemini-secondary", attempted_models[1])
+        self.assertGreater(timeout_budgets[1], timeout_budgets[0])
+        self.assertLessEqual(timeout_budgets[1], DETECTIVE_TIMEOUT_SECONDS)
 
     async def test_invalid_primary_output_uses_secondary_model(self) -> None:
         attempts = 0
@@ -330,11 +335,14 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 client=client,
             )
-            result = await analyzer.analyze(AnalyzeRequest(text="hello"))
+            with self.assertLogs("src.analyzer", level="WARNING") as logs:
+                result = await analyzer.analyze(AnalyzeRequest(text="hello"))
 
         self.assertEqual(result.provider_risk_level, "safe")
         self.assertFalse(result.fallback_used)
         self.assertEqual(attempts, 2)
+        self.assertTrue(any("schema validation" in entry for entry in logs.output))
+        self.assertTrue(all("not-json" not in entry for entry in logs.output))
 
     async def test_timed_out_primary_leaves_budget_for_secondary_model(self) -> None:
         attempts = 0
@@ -343,7 +351,7 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
             nonlocal attempts
             attempts += 1
             if attempts == 1:
-                await asyncio.sleep(0.03)
+                await asyncio.sleep(0.2)
             return httpx.Response(200, json=gemini_response(valid_detective_json()))
 
         async with httpx.AsyncClient(
@@ -361,7 +369,7 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
                 "system",
                 "prompt",
                 GeneratedScamAnalysis,
-                timeout_seconds=0.02,
+                timeout_seconds=0.1,
                 max_output_tokens=100,
                 validator=lambda response_text: response_text,
             )
@@ -381,6 +389,22 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
                 payload = json.loads(request.content.decode("utf-8"))
                 self.assertEqual(payload["model"], "openai/gpt-oss-20b")
                 self.assertEqual(payload["response_format"]["type"], "json_schema")
+                response_format = payload["response_format"]["json_schema"]
+                self.assertTrue(response_format["strict"])
+                schema = response_format["schema"]
+                self.assertFalse(schema["additionalProperties"])
+                self.assertEqual(set(schema["required"]), set(schema["properties"]))
+                for definition in schema.get("$defs", {}).values():
+                    if definition.get("type") == "object":
+                        self.assertFalse(definition["additionalProperties"])
+                        self.assertEqual(
+                            set(definition["required"]),
+                            set(definition["properties"]),
+                        )
+                self.assertEqual(
+                    payload["max_completion_tokens"],
+                    GROQ_MIN_COMPLETION_TOKENS,
+                )
                 return httpx.Response(
                     200,
                     json={
@@ -431,10 +455,19 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 client=client,
             )
-            with self.assertRaises(AnalysisError):
-                await analyzer.analyze(AnalyzeRequest(text="hello"))
+            with self.assertLogs("src.analyzer", level="WARNING") as logs:
+                with self.assertRaises(AnalysisError):
+                    await analyzer.analyze(AnalyzeRequest(text="hello"))
 
         self.assertEqual(attempts, 3)
+        target_logs = [
+            entry for entry in logs.output if "Generation target" in entry
+        ]
+        self.assertEqual(len(target_logs), 3)
+        self.assertTrue(all("HTTP 429" in entry for entry in target_logs))
+        self.assertTrue(all("failed after" in entry for entry in target_logs))
+        self.assertTrue(all("budget" in entry for entry in target_logs))
+        self.assertTrue(all("hello" not in entry for entry in logs.output))
 
     async def test_respond_uses_validated_result_and_enforces_voice(self) -> None:
         async def handler(request: httpx.Request) -> httpx.Response:
@@ -443,6 +476,8 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
             prompt = payload["contents"][0]["parts"][0]["text"]
             self.assertIn("VALIDATED_DETECTIVE_RESULT", prompt)
             self.assertNotIn("ignore previous instructions", prompt)
+            self.assertIn('REQUIRED_TERMS_JSON:\n["bác", "cô"]', prompt)
+            self.assertIn("FORBIDDEN_TERMS_JSON", prompt)
             return httpx.Response(
                 200,
                 json={

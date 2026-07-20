@@ -18,7 +18,7 @@ class CharacterSpec:
     min_sentences: int = 2
     max_sentences: int = 3
     max_sentence_chars: int = 180
-    timeout_seconds: float = 6.0
+    timeout_seconds: float = 7.5
     max_output_tokens: int = 300
 
 
