@@ -32,6 +32,26 @@ tuyến. Nếu kết nối bị gián đoạn trong lúc AI đang xử lý, trì
 mã yêu cầu trong tab và tự lấy lại đúng kết quả khi có mạng; gửi lại cùng mã không tạo thêm
 lượt AI hoặc bản ghi phân tích.
 
+## Công nghệ và framework
+
+| Phần | Công nghệ | Vai trò trong ScamCheck |
+| --- | --- | --- |
+| Ngôn ngữ backend | Python 3.14 | Xử lý API, gọi model, kiểm tra dữ liệu và truy cập cơ sở dữ liệu |
+| Web framework | FastAPI | Khai báo endpoint, middleware, cookie phiên và OpenAPI |
+| ASGI server | Uvicorn | Chạy ứng dụng FastAPI khi phát triển cục bộ |
+| Data validation | Pydantic | Kiểm tra request, response và JSON có cấu trúc từ model AI |
+| HTTP client | HTTPX | Gọi Gemini và Groq theo chuỗi dự phòng bất đồng bộ |
+| Database driver | Psycopg 3 | Kết nối backend với PostgreSQL bằng truy vấn tham số hóa |
+| Cơ sở dữ liệu | Supabase PostgreSQL | Lưu kết quả phân tích, nhật ký lượt AI và trạng thái request idempotent |
+| Frontend | HTML5, CSS3, Vanilla JavaScript | Giao diện, điều hướng, lịch sử cục bộ, luyện tập và phân tích offline; không dùng framework frontend |
+| Offline/PWA | Service Worker, Cache API | Lưu bộ khung giao diện để mở ứng dụng và chạy bộ quy tắc khi mất mạng |
+| AI providers | Google Gemini, Groq GPT-OSS | Phân tích tin nhắn trực tuyến và tạo phản hồi Cô tâm lý |
+| Kiểm thử | Python `unittest`, HTTPX `MockTransport` | Kiểm thử API, provider fallback, PostgreSQL contract và frontend |
+| Công cụ | uv, Pyright, Make | Quản lý dependency, kiểm tra kiểu dữ liệu và rút gọn lệnh chạy/test |
+| Triển khai | Vercel | Chạy FastAPI dưới dạng Python serverless application |
+
+Luồng chính: **HTML/CSS/JavaScript → FastAPI/Pydantic → Gemini hoặc Groq → PostgreSQL → JSON trả về trình duyệt**.
+
 ## Cấu trúc thư mục
 
 ```text
