@@ -219,6 +219,9 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
         ?analysis.suggestions.slice(0,3).map(String)
         :[]
     },
+    deterministic_findings:Array.isArray(result?.deterministic_findings)
+      ?result.deterministic_findings
+      :[],
     character:guideOutput?{
       character_id:'calming-guide',
       title:'Cô tâm lý',
@@ -654,7 +657,22 @@ function playDetectiveMessageSequence(){
   resultFrame.classList.add('message-sequence-playing');
 }
 
-function renderSignals(detective){
+const deterministicRuleLabels={
+  url_lookalike:'Tên miền có dấu hiệu giả mạo',shortened_url:'Liên kết rút gọn',
+  cyrillic_hostname:'Tên miền dùng ký tự Cyrillic',cyrillic_text:'Nội dung dùng ký tự Cyrillic',
+  verification_code_request:'Yêu cầu mã xác thực',transfer_request:'Yêu cầu chuyển tiền',
+  account_number:'Số tài khoản xuất hiện',urgent_language:'Ngôn ngữ thúc giục'
+};
+
+function renderDeterministicFindings(findings){
+  findings.forEach(finding=>appendSignalCard(
+    deterministicRuleLabels[finding.kind]||finding.kind,
+    'Dấu hiệu này được tìm thấy trong nội dung đã gửi.',
+    finding.excerpt
+  ));
+}
+
+function renderSignals(detective,deterministicFindings=[]){
   signalList.replaceChildren();
   appendSignalCard(
     detective.analysis_mode==='offline'?'Nhận định ngoại tuyến':'Nhận định của Thám tử',
@@ -676,20 +694,20 @@ function renderSignals(detective){
         item.excerpt
       );
     });
-    return;
-  }
-
-  const indicators=Array.isArray(detective.indicators)?detective.indicators:[];
-  if(indicators.length){
-    indicators.forEach(indicator=>{
-      appendSignalCard(indicator,'Dấu hiệu này được Thám tử phát hiện trong nội dung.');
-    });
   }else{
-    appendSignalCard(
-      'Chưa phát hiện dấu hiệu nổi bật',
-      'Thám tử chưa tìm thấy dấu hiệu cụ thể trong nội dung này.'
-    );
+    const indicators=Array.isArray(detective.indicators)?detective.indicators:[];
+    if(indicators.length){
+      indicators.forEach(indicator=>{
+        appendSignalCard(indicator,'Dấu hiệu này được Thám tử phát hiện trong nội dung.');
+      });
+    }else{
+      appendSignalCard(
+        'Chưa phát hiện dấu hiệu nổi bật',
+        'Thám tử chưa tìm thấy dấu hiệu cụ thể trong nội dung này.'
+      );
+    }
   }
+  renderDeterministicFindings(deterministicFindings);
 }
 
 function renderRecommendations(actions){
@@ -733,7 +751,7 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
     ?`Đánh giá sơ bộ ngoại tuyến. ${risk.description}`
     :risk.description;
 
-  renderSignals(detective);
+  renderSignals(detective,payload.deterministic_findings);
   const shouldHighlight=detective.risk_level==='suspicious'||detective.risk_level==='dangerous';
   const excerpts=shouldHighlight
     ?(detective.indicator_evidence||[]).map(item=>item.excerpt)

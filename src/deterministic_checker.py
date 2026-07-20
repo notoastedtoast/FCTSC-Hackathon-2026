@@ -53,6 +53,16 @@ URGENT_LANGUAGE = re.compile(
     r"tài\s*khoản.{0,20}(?:khóa|bị\s*khóa))\b",
     re.IGNORECASE,
 )
+TEXT_RULES = (
+    ("transfer_request", TRANSFER_REQUEST),
+    ("account_number", ACCOUNT_NUMBER),
+    ("urgent_language", URGENT_LANGUAGE),
+    ("cyrillic_text", CYRILLIC_TOKEN),
+)
+HIGH_RISK_COMBINATIONS = (
+    frozenset({"verification_code_request", "transfer_request"}),
+    frozenset({"transfer_request", "account_number", "urgent_language"}),
+)
 
 
 @dataclass(frozen=True)
@@ -156,21 +166,12 @@ async def check_urls(text: str, client: httpx.AsyncClient | None = None) -> list
             )
             for url in extract_urls(text)
         ]
-    async with httpx.AsyncClient(timeout=5) as owned_client:
+    async with httpx.AsyncClient(timeout=0.5) as owned_client:
         return await check_urls(text, owned_client)
 
 
-async def check_message(
-    text: str,
-    client: httpx.AsyncClient | None = None,
-) -> DeterministicResult:
-    """Collect deterministic scam signals without invoking an AI model."""
-    url_checks = await check_urls(text, client)
-    verification_requests = [
-        match for match in VERIFICATION_CODE_REQUEST.finditer(text)
-        if NEGATED_REQUEST.search(text[max(0, match.start() - 25):match.end()]) is None
-    ]
-    findings = [
+def _url_findings(url_checks: list[URLCheck]) -> list[RuleFinding]:
+    return [
         *(
             RuleFinding(
                 "url_lookalike",
@@ -186,28 +187,53 @@ async def check_message(
             for check in url_checks
             if check.url != check.destination
         ),
-        *(RuleFinding("cyrillic_hostname", "medium", check.url)
-          for check in url_checks if check.has_cyrillic),
-        *(RuleFinding("verification_code_request", "medium", match.group())
-          for match in verification_requests),
-        *(RuleFinding("transfer_request", "medium", match.group())
-          for match in TRANSFER_REQUEST.finditer(text)),
-        *(RuleFinding("account_number", "medium", match.group())
-          for match in ACCOUNT_NUMBER.finditer(text)),
-        *(RuleFinding("urgent_language", "medium", match.group())
-          for match in URGENT_LANGUAGE.finditer(text)),
-        *(RuleFinding("cyrillic_text", "medium", match.group())
-          for match in CYRILLIC_TOKEN.finditer(text)),
+        *(
+            RuleFinding("cyrillic_hostname", "medium", check.url)
+            for check in url_checks
+            if check.has_cyrillic
+        ),
     ]
+
+
+def _verification_code_findings(text: str) -> list[RuleFinding]:
+    findings = []
+    for match in VERIFICATION_CODE_REQUEST.finditer(text):
+        context = text[max(0, match.start() - 25):match.end()]
+        if NEGATED_REQUEST.search(context) is None:
+            findings.append(
+                RuleFinding("verification_code_request", "medium", match.group())
+            )
+    return findings
+
+
+def _text_findings(text: str) -> list[RuleFinding]:
+    findings = _verification_code_findings(text)
+    for kind, pattern in TEXT_RULES:
+        findings.extend(
+            RuleFinding(kind, "medium", match.group())
+            for match in pattern.finditer(text)
+        )
+    return findings
+
+
+def _risk_floor(
+    findings: list[RuleFinding],
+) -> Literal["low", "medium", "high"]:
     kinds = {finding.kind for finding in findings}
-    high_risk_combination = (
-        {"verification_code_request", "transfer_request"} <= kinds
-        or {"transfer_request", "account_number", "urgent_language"} <= kinds
+    is_high_risk = (
+        any(finding.severity == "high" for finding in findings)
+        or any(combination <= kinds for combination in HIGH_RISK_COMBINATIONS)
     )
-    risk_floor = (
-        "high"
-        if high_risk_combination
-        or any(finding.severity == "high" for finding in findings)
-        else "medium" if findings else "low"
-    )
-    return DeterministicResult(url_checks, findings, risk_floor)
+    if is_high_risk:
+        return "high"
+    return "medium" if findings else "low"
+
+
+async def check_message(
+    text: str,
+    client: httpx.AsyncClient | None = None,
+) -> DeterministicResult:
+    """Collect deterministic scam signals without invoking an AI model."""
+    url_checks = await check_urls(text, client)
+    findings = [*_url_findings(url_checks), *_text_findings(text)]
+    return DeterministicResult(url_checks, findings, _risk_floor(findings))

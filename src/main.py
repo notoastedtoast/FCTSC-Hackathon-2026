@@ -7,11 +7,11 @@ from fastapi import Body, Cookie, Depends, FastAPI, HTTPException, Response
 from dotenv import load_dotenv
 
 from .database import HistoryDatabase, HistoryEntry
+from .deterministic_checker import check_message
 from .frontend import router as frontend_router
 from .schema import (
     DETECTIVE,
     GUIDE,
-    LOW_RISK_THRESHOLD,
     Analysis,
     GuideOutput,
     Settings,
@@ -70,6 +70,7 @@ async def analyze(
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> Analysis:
     session_id = consume_ai_call(response, session_id)
+    deterministic_result = await check_message(data)
 
     try:
         detective_analysis = await client.generate(DETECTIVE, data)
@@ -81,6 +82,8 @@ async def analyze(
     result = Analysis(
         success=True,
         analysis=detective_analysis,
+        deterministic_findings=deterministic_result.findings,
+        deterministic_risk_floor=deterministic_result.risk_floor,
     )
     await database.save_analysis(session_id, data, result)
     return result
@@ -98,10 +101,11 @@ async def guide(
     item = await database.get_history_item(str(history_id))
     if item is None:
         raise HTTPException(404, "History item not found")
-    analysis = Analysis.model_validate(item["analysis"]).analysis
+    stored_analysis = Analysis.model_validate(item["analysis"])
+    analysis = stored_analysis.analysis
     if analysis is None:
         raise HTTPException(409, "Successful analysis is required")
-    if analysis.risk_level <= LOW_RISK_THRESHOLD:
+    if stored_analysis.risk_level == "low":
         return Response(status_code=204)
     if item["guide_output"] is not None:
         return GuideOutput(data=item["guide_output"])
@@ -140,4 +144,3 @@ async def delete_history(
         raise HTTPException(401, "Session ID is required")
     if not await database.delete_history(session_id, str(history_id)):
         raise HTTPException(404, "History item not found")
-

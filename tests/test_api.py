@@ -81,7 +81,8 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(
             response.json(),
-            {"success": False, "analysis": None, "risk_level": None},
+            {"success": False, "analysis": None, "deterministic_findings": [],
+             "deterministic_risk_floor": "low", "risk_level": None},
         )
         self.database.save_analysis.assert_not_awaited()
 

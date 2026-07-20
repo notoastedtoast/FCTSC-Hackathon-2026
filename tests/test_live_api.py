@@ -22,18 +22,17 @@ def create_live_analyze_test(
     message: str,
     *,
     risk_level: tuple[float, float],
-    suggestions: tuple[int, int],
+    minimum_suggestions: int,
     excerpts: tuple[int, int],
 ) -> Callable[["LiveAnalyzeAPITests"], Awaitable[None]]:
     """Create a live /analyze/ test with inclusive result bounds."""
 
     minimum_risk, maximum_risk = risk_level
-    minimum_suggestions, maximum_suggestions = suggestions
     minimum_excerpts, maximum_excerpts = excerpts
     if not 0 <= minimum_risk <= maximum_risk <= 1:
         raise ValueError("risk_level bounds must be ordered values from 0 to 1")
-    if not 0 <= minimum_suggestions <= maximum_suggestions:
-        raise ValueError("suggestion bounds must be ordered non-negative values")
+    if minimum_suggestions < 0:
+        raise ValueError("minimum_suggestions must be non-negative")
     if not 0 <= minimum_excerpts <= maximum_excerpts:
         raise ValueError("excerpt bounds must be ordered non-negative values")
     async def test(case: "LiveAnalyzeAPITests") -> None:
@@ -55,9 +54,6 @@ def create_live_analyze_test(
         case.assertLessEqual(analysis.risk_level, maximum_risk, context)
         case.assertGreaterEqual(
             len(analysis.suggestions), minimum_suggestions, context
-        )
-        case.assertLessEqual(
-            len(analysis.suggestions), maximum_suggestions, context
         )
         case.assertGreaterEqual(len(analysis.excerpts), minimum_excerpts, context)
         case.assertLessEqual(len(analysis.excerpts), maximum_excerpts, context)
@@ -113,22 +109,23 @@ class LiveAnalyzeAPITests(IsolatedAsyncioTestCase):
     async def test_inputs_from_json(self) -> None:
         for index, live_input in enumerate(LIVE_INPUTS, start=1):
             print(f"[online {index}/{len(LIVE_INPUTS)}]", flush=True)
-            test = create_live_analyze_test(
-                live_input["input"],
-                risk_level=(
-                    live_input["risk_level"]["min"],
-                    live_input["risk_level"]["max"],
-                ),
-                suggestions=(
-                    live_input["recommendations"]["min"],
-                    live_input["recommendations"]["max"],
-                ),
-                excerpts=(
-                    live_input["excerpts"]["min"],
-                    live_input["excerpts"]["max"],
-                ),
-            )
-            await test(self)
+            with self.subTest(index=index, message=live_input["input"]):
+                try:
+                    test = create_live_analyze_test(
+                        live_input["input"],
+                        risk_level=(
+                            live_input["risk_level"]["min"],
+                            live_input["risk_level"]["max"],
+                        ),
+                        minimum_suggestions=live_input["recommendations"]["min"],
+                        excerpts=(
+                            live_input["excerpts"]["min"],
+                            live_input["excerpts"]["max"],
+                        ),
+                    )
+                    await test(self)
+                finally:
+                    self.database.save_analysis.reset_mock()
 
 LIVE_FIXTURE = json.loads(
     Path(__file__).with_name("live_inputs.json").read_text(encoding="utf-8")

@@ -1,17 +1,39 @@
 """Frontend assets and authored scam-library API routes."""
 
+import json
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path as ApiPath
 from fastapi.responses import FileResponse
+from pydantic import TypeAdapter
 
-from .catalog import get_scam_type, list_scam_types
 from .schema import ScamType, ScamTypeGroup
 
 
 router = APIRouter()
 frontend_directory = Path(__file__).parent.parent / "frontend"
+catalog_file = Path(__file__).with_name("data") / "scam_types.json"
+scam_type_catalog = tuple(
+    TypeAdapter(list[ScamType]).validate_python(
+        json.loads(catalog_file.read_text(encoding="utf-8"))
+    )
+)
+
+
+def list_scam_types(group: ScamTypeGroup | None = None) -> list[ScamType]:
+    return [
+        item
+        for item in scam_type_catalog
+        if group is None or item.group == group
+    ]
+
+
+def get_scam_type(scam_type_id: str) -> ScamType | None:
+    return next(
+        (item for item in scam_type_catalog if item.id == scam_type_id),
+        None,
+    )
 
 
 @router.get("/scam-types", response_model=list[ScamType])
