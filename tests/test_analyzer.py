@@ -196,6 +196,74 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(len(result.actions) == 3 for result in results))
         self.assertTrue(all(len(result.scenarios) == 12 for result in results))
 
+    async def test_five_basic_provider_abnormalities_have_friendly_outcomes(self) -> None:
+        async def analyze_with(
+            handler: httpx.AsyncBaseTransport,
+        ) -> ScamAnalysis | AnalysisError:
+            async with httpx.AsyncClient(
+                transport=handler, base_url="https://provider.test/"
+            ) as client:
+                analyzer = ScamAnalyzer(
+                    Settings(google_api_key="test-key", google_model="gemini-test"),
+                    client=client,
+                )
+                try:
+                    return await analyzer.analyze(AnalyzeRequest(text="hello"))
+                except AnalysisError as exc:
+                    return exc
+
+        malformed_json = await analyze_with(
+            httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200,
+                    json={
+                        "candidates": [
+                            {"content": {"parts": [{"text": "not json"}]}}
+                        ]
+                    },
+                )
+            )
+        )
+        empty_response = await analyze_with(
+            httpx.MockTransport(
+                lambda request: httpx.Response(200, json={"candidates": []})
+            )
+        )
+
+        def timeout_handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        timed_out = await analyze_with(httpx.MockTransport(timeout_handler))
+
+        def connection_handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("connection failed", request=request)
+
+        connection_failed = await analyze_with(httpx.MockTransport(connection_handler))
+
+        rate_limit_attempts = 0
+
+        def rate_limit_handler(request: httpx.Request) -> httpx.Response:
+            nonlocal rate_limit_attempts
+            rate_limit_attempts += 1
+            return httpx.Response(429, request=request)
+
+        rate_limited = await analyze_with(httpx.MockTransport(rate_limit_handler))
+
+        self.assertIsInstance(malformed_json, ScamAnalysis)
+        self.assertTrue(malformed_json.fallback_used)
+        self.assertIn("kiểm tra", malformed_json.reasoning)
+        self.assertIsInstance(empty_response, ScamAnalysis)
+        self.assertTrue(empty_response.fallback_used)
+        self.assertIn("kiểm tra", empty_response.reasoning)
+
+        self.assertIsInstance(timed_out, AnalysisError)
+        self.assertIn("thời gian", timed_out.user_message)
+        self.assertIsInstance(connection_failed, AnalysisError)
+        self.assertIn("kết nối", connection_failed.user_message)
+        self.assertIsInstance(rate_limited, AnalysisError)
+        self.assertIn("quá nhiều yêu cầu", rate_limited.user_message)
+        self.assertEqual(rate_limit_attempts, 2)
+
     def test_main_categories_are_capped_at_four(self) -> None:
         scenarios = scenario_assessments()
         for assessment in scenarios[:6]:

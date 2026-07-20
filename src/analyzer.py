@@ -99,13 +99,24 @@ class ProviderTarget:
 class GenerationError(RuntimeError):
     """Raised after every configured provider target has failed."""
 
-    def __init__(self, *, had_valid_http_response: bool) -> None:
+    def __init__(
+        self, *, had_valid_http_response: bool, last_error: Exception | None
+    ) -> None:
         super().__init__("All configured generation targets failed")
         self.had_valid_http_response = had_valid_http_response
+        self.last_error = last_error
 
 
 class AnalysisError(RuntimeError):
-    """Raised when the Detective analysis cannot be completed safely."""
+    """Raised with a safe message that the HTTP layer may show to the user."""
+
+    DEFAULT_USER_MESSAGE = (
+        "Chưa thể hoàn tất kiểm tra lúc này. Bác vui lòng thử lại sau ít phút."
+    )
+
+    def __init__(self, message: str, *, user_message: str | None = None) -> None:
+        super().__init__(message)
+        self.user_message = user_message or self.DEFAULT_USER_MESSAGE
 
 
 class CharacterError(RuntimeError):
@@ -242,8 +253,32 @@ UNTRUSTED_MESSAGE_JSON:
         except GenerationError as exc:
             if exc.had_valid_http_response:
                 return fallback_analysis()
+            user_message = AnalysisError.DEFAULT_USER_MESSAGE
+            if isinstance(exc.last_error, (TimeoutError, httpx.TimeoutException)):
+                user_message = (
+                    "Việc kiểm tra mất nhiều thời gian hơn dự kiến. "
+                    "Bác vui lòng thử lại."
+                )
+            elif isinstance(exc.last_error, httpx.HTTPStatusError):
+                if exc.last_error.response.status_code == 429:
+                    user_message = (
+                        "Các dịch vụ phân tích đang nhận quá nhiều yêu cầu. "
+                        "Bác vui lòng thử lại sau ít phút."
+                    )
+                else:
+                    user_message = (
+                        "Dịch vụ phân tích đang tạm gián đoạn. "
+                        "Bác vui lòng thử lại sau ít phút."
+                    )
+            elif isinstance(exc.last_error, httpx.RequestError):
+                user_message = (
+                    "Chưa thể kết nối dịch vụ phân tích. "
+                    "Bác vui lòng kiểm tra mạng và thử lại."
+                )
             logger.exception("Detective request failed: %s", type(exc).__name__)
-            raise AnalysisError("Analysis provider is unavailable") from exc
+            raise AnalysisError(
+                "Analysis provider is unavailable", user_message=user_message
+            ) from exc
 
     async def respond(
         self,
@@ -345,7 +380,10 @@ VALIDATED_DETECTIVE_RESULT:
                 )
                 continue
 
-        error = GenerationError(had_valid_http_response=had_valid_http_response)
+        error = GenerationError(
+            had_valid_http_response=had_valid_http_response,
+            last_error=last_error,
+        )
         if last_error is not None:
             raise error from last_error
         raise error

@@ -1,6 +1,6 @@
-const CHECK_COOLDOWN_MS=5000,MIN_LENGTH=10,MAX_LENGTH=10000,CONNECTION_RETRY_MS=5000,DRAFT_KEY='scamcheck-message-draft',PENDING_ANALYSIS_KEY='scamcheck-pending-analysis';
-const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),connectivityMessage=document.getElementById('connectivity-message'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),resultContextLabel=document.getElementById('result-context-label'),historyReturnButton=document.getElementById('history-return-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
-const psychologyMessage=document.getElementById('psychology-message'),recommendations=document.getElementById('recommendations');
+const CHECK_COOLDOWN_MS=5000,MIN_LENGTH=10,MAX_LENGTH=10000,CONNECTION_RETRY_MS=5000,DETECTIVE_MESSAGE_START_MS=180,DETECTIVE_MESSAGE_GAP_MS=650,DRAFT_KEY='scamcheck-message-draft',PENDING_ANALYSIS_KEY='scamcheck-pending-analysis';
+const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),connectivityMessage=document.getElementById('connectivity-message'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),originalMessage=document.getElementById('original-message'),highlightNote=document.getElementById('highlight-note'),resultContextLabel=document.getElementById('result-context-label'),historyReturnButton=document.getElementById('history-return-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
+const psychologyBlock=document.getElementById('psychology-block'),psychologyMessage=document.getElementById('psychology-message'),actionSection=document.getElementById('action-section'),recommendations=document.getElementById('recommendations');
 const practiceContent=document.getElementById('practice-content'),practiceMessage=document.getElementById('practice-message'),practiceProgress=document.getElementById('practice-progress'),practiceScore=document.getElementById('practice-score'),practiceAnswerButtons=document.querySelectorAll('.practice-answer-button'),practiceFeedback=document.getElementById('practice-feedback'),practiceNextButton=document.getElementById('practice-next-button');
 const libraryListFrame=document.getElementById('library-list-frame'),libraryDetailFrame=document.getElementById('library-detail-frame'),librarySearch=document.getElementById('library-search'),libraryFilters=document.querySelectorAll('.library-filter'),libraryResultCount=document.getElementById('library-result-count'),libraryLoadError=document.getElementById('library-load-error'),libraryRetryButton=document.getElementById('library-retry-button'),scamTypeList=document.getElementById('scam-type-list'),libraryEmpty=document.getElementById('library-empty'),libraryResetButton=document.getElementById('library-reset-button'),libraryDetailBack=document.getElementById('library-detail-back'),libraryDetailError=document.getElementById('library-detail-error'),libraryDetailContent=document.getElementById('library-detail-content'),libraryDetailIcon=document.getElementById('library-detail-icon'),libraryDetailGroup=document.getElementById('library-detail-group'),libraryDetailTitle=document.getElementById('library-detail-title'),libraryDetailDescription=document.getElementById('library-detail-description'),libraryDetailSigns=document.getElementById('library-detail-signs'),libraryDetailExample=document.getElementById('library-detail-example'),libraryDetailDo=document.getElementById('library-detail-do'),libraryDetailDont=document.getElementById('library-detail-dont');
 const navLinks=document.querySelectorAll('.nav-link[data-view]'),pageViews=document.querySelectorAll('[data-view-panel]');
@@ -735,8 +735,22 @@ function appendHighlightedText(container,text,quotes){
 }
 
 function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=null){
+  const messageOrder=signalList.childElementCount;
+  const row=document.createElement('div');
+  row.className=`detective-message-row ${messageOrder===0?'summary-message':'evidence-message'}`;
+  row.style.setProperty(
+    '--message-delay',
+    `${DETECTIVE_MESSAGE_START_MS+messageOrder*DETECTIVE_MESSAGE_GAP_MS}ms`
+  );
+  const avatar=document.createElement('img');
+  avatar.className='detective-message-avatar';
+  avatar.src='/detective-avatar.png';
+  avatar.alt='';
+  avatar.width=42;
+  avatar.height=42;
+  avatar.setAttribute('aria-hidden','true');
   const card=document.createElement('article');
-  card.className='signal-card';
+  card.className='signal-card detective-message-bubble';
   const title=document.createElement('h3');
   title.textContent=titleText;
   const explanation=document.createElement('p');
@@ -756,7 +770,15 @@ function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=nul
     quote.textContent=`Đoạn liên quan: “${quoteText}”`;
     card.appendChild(quote);
   }
-  signalList.appendChild(card);
+  row.append(avatar,card);
+  signalList.appendChild(row);
+}
+
+function playDetectiveMessageSequence(){
+  resultFrame.classList.remove('message-sequence-playing');
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  void signalList.offsetWidth;
+  resultFrame.classList.add('message-sequence-playing');
 }
 
 function renderSignals(detective){
@@ -806,12 +828,20 @@ function renderRecommendations(actions){
 }
 
 function renderPsychology(payload){
+  const riskLevel=payload?.detective?.risk_level;
+  const shouldShow=riskLevel==='suspicious'||riskLevel==='dangerous';
+  psychologyBlock.hidden=!shouldShow;
+  actionSection.classList.toggle('psychology-hidden',!shouldShow);
+  if(!shouldShow){
+    psychologyMessage.textContent='';
+    return;
+  }
   if(payload.character){
     psychologyMessage.textContent=payload.character.message;
   }else if(payload.character_notice){
     psychologyMessage.textContent=payload.character_notice;
   }else{
-    psychologyMessage.textContent='Tin được đánh giá an toàn nên Cô tâm lý không cần đưa ra cảnh báo bổ sung.';
+    psychologyMessage.textContent='Cô tâm lý chưa thể gửi lời nhắn bổ sung lúc này; bác xem hướng dẫn an toàn bên dưới nhé.';
   }
 }
 
@@ -831,13 +861,18 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
     :risk.description;
 
   renderSignals(detective);
-  const excerpts=(detective.indicator_evidence||[]).map(item=>item.excerpt);
+  const shouldHighlight=detective.risk_level==='suspicious'||detective.risk_level==='dangerous';
+  const excerpts=shouldHighlight
+    ?(detective.indicator_evidence||[]).map(item=>item.excerpt)
+    :[];
   appendHighlightedText(originalMessage,text,excerpts);
+  highlightNote.hidden=!shouldHighlight||excerpts.length===0;
   renderRecommendations(detective.actions||[]);
   renderPsychology(payload);
 
   inputFrame.style.display='none';
   resultFrame.classList.add('active');
+  playDetectiveMessageSequence();
   window.scrollTo({top:0,behavior:'smooth'});
 }
 

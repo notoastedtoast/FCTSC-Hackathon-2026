@@ -117,6 +117,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         ) as client:
             page = await client.get("/")
             logo = await client.get("/scamcheck-logo.png")
+            detective_avatar = await client.get("/detective-avatar.png")
             styles = await client.get("/styles.css")
             script = await client.get("/app.js")
             offline_analyzer = await client.get("/offline-analyzer.js")
@@ -129,6 +130,9 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(logo.status_code, 200)
         self.assertEqual(logo.headers["content-type"], "image/png")
         self.assertTrue(logo.content.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(detective_avatar.status_code, 200)
+        self.assertEqual(detective_avatar.headers["content-type"], "image/png")
+        self.assertTrue(detective_avatar.content.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertEqual(styles.status_code, 200)
         self.assertIn("text/css", styles.headers["content-type"])
         self.assertIn(":root", styles.text)
@@ -555,7 +559,12 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(
             response.json(),
-            {"detail": "Unable to complete scam analysis at this time"},
+            {
+                "detail": (
+                    "Chưa thể hoàn tất kiểm tra lúc này. "
+                    "Bác vui lòng thử lại sau ít phút."
+                )
+            },
         )
         self.assertEqual(history.json()["usage"], {"used": 1, "limit": 10})
         self.assertFalse(history.json()["calls"][0]["success"])

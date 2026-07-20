@@ -1,6 +1,7 @@
 
-const CACHE_NAME="scamcheck-shell-v11";
-const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app.js","/scamcheck-logo.png"];
+const CACHE_NAME="scamcheck-shell-v14";
+const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app.js","/scamcheck-logo.png","/detective-avatar.png"];
+const NETWORK_FIRST_PATHS=new Set(["/","/styles.css","/app.js"]);
 
 self.addEventListener("install",event=>{
   event.waitUntil(
@@ -38,7 +39,7 @@ self.addEventListener("fetch",event=>{
     return response;
   };
 
-  if(cacheKey!=="/"){
+  if(!NETWORK_FIRST_PATHS.has(cacheKey)){
     const refresh=updateCache();
     event.waitUntil(refresh.then(()=>undefined).catch(()=>undefined));
     event.respondWith((async()=>{

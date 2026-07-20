@@ -119,22 +119,28 @@
         </section>
 
         <div class="result-grid">
-          <section class="result-section">
-            <div id="detective-title" class="role-label">Thám tử</div>
-            <h2>Những dấu hiệu đáng chú ý</h2>
-            <div id="signal-list" class="signal-list"></div>
+          <section class="result-section detective-section">
+            <div class="detective-chat-heading">
+              <img class="detective-heading-avatar" src="./detective-avatar.png" alt="" width="54" height="54">
+              <div>
+                <div id="detective-title" class="role-label">Thám tử</div>
+                <h2>Những dấu hiệu đáng chú ý</h2>
+                <p class="detective-chat-status"><span aria-hidden="true"></span>Phản hồi phân tích</p>
+              </div>
+            </div>
+            <div id="signal-list" class="signal-list detective-message-list"></div>
           </section>
 
           <section class="result-section">
             <p class="section-kicker">Nội dung đã gửi</p>
             <h2>Tin nhắn gốc</h2>
             <div id="original-message" class="original-message"></div>
-            <p class="highlight-note">Vùng tô màu là nội dung cần đặc biệt chú ý.</p>
+            <p id="highlight-note" class="highlight-note">Vùng tô màu là nội dung cần đặc biệt chú ý.</p>
           </section>
         </div>
 
-        <section class="result-section action-section">
-          <div class="psychology-block">
+        <section id="action-section" class="result-section action-section">
+          <div id="psychology-block" class="psychology-block">
             <div id="psychology-title" class="role-label psychology-label">Cô tâm lý</div>
             <p id="psychology-message" class="psychology-message"></p>
           </div>
