@@ -1,6 +1,7 @@
 import os
 from hashlib import sha256
 import unittest
+from unittest.mock import patch
 
 import httpx
 from dotenv import load_dotenv
@@ -8,8 +9,9 @@ import tests._logging  # noqa: F401
 
 from src.analyzer import AnalysisError, ScamAnalyzer
 from src.characters import CharacterSpec
-from src.config import Settings
+from src.config import DEFAULT_GOOGLE_MODEL, Settings
 from src.database import AnalysisRepository, DatabaseError
+from src.main import app as main_app
 from src.main import create_app
 from src.schemas import (
     AnalyzeRequest,
@@ -64,6 +66,30 @@ class StubAnalyzer:
 
 
 class ApiTests(unittest.IsolatedAsyncioTestCase):
+    def test_vercel_entrypoint_reexports_the_composed_application(self) -> None:
+        from src.app import app as vercel_app
+
+        self.assertIs(vercel_app, main_app)
+
+    async def test_lifespan_builds_repository_from_postgresql_url(self) -> None:
+        database_url = "postgresql://test:test@localhost:5432/scamcheck"
+        repository = AnalysisRepository(":memory:")
+        analyzer = StubAnalyzer()
+        app = create_app(
+            settings=Settings(
+                google_api_key="test-key",
+                google_model="gemini-test",
+                database_url=database_url,
+            ),
+            analyzer=analyzer,
+        )
+
+        with patch("src.main.AnalysisRepository", return_value=repository) as factory:
+            async with app.router.lifespan_context(app):
+                self.assertIs(app.state.repository, repository)
+
+        factory.assert_called_once_with(database_url)
+
     def setUp(self) -> None:
         self.repository = AnalysisRepository(":memory:")
         self.addCleanup(self.repository.close)
@@ -597,8 +623,8 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
 def _live_gemini_settings() -> Settings | None:
     load_dotenv()
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-    model = os.getenv("GOOGLE_MODEL") or os.getenv("GEMINI_MODEL")
-    if not api_key or not model:
+    model = os.getenv("GOOGLE_MODEL") or os.getenv("GEMINI_MODEL") or DEFAULT_GOOGLE_MODEL
+    if not api_key:
         return None
     return Settings(google_api_key=api_key, google_model=model)
 
@@ -607,7 +633,7 @@ class LiveGeminiApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_analyze_uses_live_gemini_api(self) -> None:
         settings = _live_gemini_settings()
         if settings is None:
-            self.skipTest("Set GOOGLE_API_KEY/GEMINI_API_KEY and GOOGLE_MODEL/GEMINI_MODEL to run live Gemini tests")
+            self.skipTest("Set GOOGLE_API_KEY or GEMINI_API_KEY to run live Gemini tests")
 
         analyzer = ScamAnalyzer(settings)
         app = create_app(analyzer=analyzer, repository=AnalysisRepository(":memory:"))
@@ -650,7 +676,7 @@ class LiveGeminiApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_analyze_rejects_invalid_payloads_with_live_gemini_api(self) -> None:
         settings = _live_gemini_settings()
         if settings is None:
-            self.skipTest("Set GOOGLE_API_KEY/GEMINI_API_KEY and GOOGLE_MODEL/GEMINI_MODEL to run live Gemini tests")
+            self.skipTest("Set GOOGLE_API_KEY or GEMINI_API_KEY to run live Gemini tests")
 
         analyzer = ScamAnalyzer(settings)
         app = create_app(analyzer=analyzer, repository=AnalysisRepository(":memory:"))
@@ -678,7 +704,7 @@ class LiveGeminiApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_live_normal_sms_is_safe_without_character_follow_up(self) -> None:
         settings = _live_gemini_settings()
         if settings is None:
-            self.skipTest("Set GOOGLE_API_KEY/GEMINI_API_KEY and GOOGLE_MODEL/GEMINI_MODEL to run live Gemini tests")
+            self.skipTest("Set GOOGLE_API_KEY or GEMINI_API_KEY to run live Gemini tests")
 
         analyzer = ScamAnalyzer(settings)
         try:
@@ -703,7 +729,7 @@ class LiveGeminiApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_live_normal_email_is_safe_without_character_follow_up(self) -> None:
         settings = _live_gemini_settings()
         if settings is None:
-            self.skipTest("Set GOOGLE_API_KEY/GEMINI_API_KEY and GOOGLE_MODEL/GEMINI_MODEL to run live Gemini tests")
+            self.skipTest("Set GOOGLE_API_KEY or GEMINI_API_KEY to run live Gemini tests")
 
         analyzer = ScamAnalyzer(settings)
         try:
@@ -731,7 +757,7 @@ class LiveGeminiApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_live_ambiguous_delivery_message_stays_in_allowed_range(self) -> None:
         settings = _live_gemini_settings()
         if settings is None:
-            self.skipTest("Set GOOGLE_API_KEY/GEMINI_API_KEY and GOOGLE_MODEL/GEMINI_MODEL to run live Gemini tests")
+            self.skipTest("Set GOOGLE_API_KEY or GEMINI_API_KEY to run live Gemini tests")
 
         analyzer = ScamAnalyzer(settings)
         try:

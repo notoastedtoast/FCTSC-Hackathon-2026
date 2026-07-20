@@ -2,14 +2,15 @@
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 
 from dotenv import load_dotenv
 
 
-DEFAULT_DATABASE_PATH: Final[Path] = Path.cwd() / "app.db"
 DEFAULT_AI_SESSION_CALL_LIMIT: Final[int] = 10
+DEFAULT_GOOGLE_MODEL: Final[str] = "gemini-3.5-flash"
+DEFAULT_GOOGLE_FALLBACK_MODEL: Final[str] = "gemini-3.1-flash-lite"
+DEFAULT_GROQ_MODEL: Final[str] = "openai/gpt-oss-20b"
 
 
 class ConfigurationError(RuntimeError):
@@ -20,14 +21,24 @@ class ConfigurationError(RuntimeError):
 class Settings:
     google_api_key: str
     google_model: str
-    database_path: str = str(DEFAULT_DATABASE_PATH)
+    google_fallback_model: str = DEFAULT_GOOGLE_FALLBACK_MODEL
+    groq_api_key: str | None = None
+    groq_model: str = DEFAULT_GROQ_MODEL
+    database_url: str = ""
     ai_session_call_limit: int = DEFAULT_AI_SESSION_CALL_LIMIT
 
 
-def load_database_path() -> str:
-    """Load the SQLite path without requiring analysis provider settings."""
+def load_database_url() -> str:
+    """Load and validate the server-side PostgreSQL connection string."""
     load_dotenv()
-    return os.getenv("DATABASE_PATH") or str(DEFAULT_DATABASE_PATH)
+    database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+    if not database_url:
+        raise ConfigurationError(
+            "Missing required configuration: DATABASE_URL (or SUPABASE_DB_URL)."
+        )
+    if not database_url.startswith(("postgresql://", "postgres://")):
+        raise ConfigurationError("DATABASE_URL must be a PostgreSQL connection string")
+    return database_url
 
 
 def load_settings() -> Settings:
@@ -36,18 +47,19 @@ def load_settings() -> Settings:
 
     # GEMINI_API_KEY keeps the original prototype's configuration working.
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-    model = os.getenv("GOOGLE_MODEL") or os.getenv("GEMINI_MODEL")
-    if not api_key or not model:
-        missing = [
-            label
-            for value, label in (
-                (api_key, "GOOGLE_API_KEY (or GEMINI_API_KEY)"),
-                (model, "GOOGLE_MODEL (or GEMINI_MODEL)"),
-            )
-            if not value
-        ]
+    model = (
+        os.getenv("GOOGLE_MODEL")
+        or os.getenv("GEMINI_MODEL")
+        or DEFAULT_GOOGLE_MODEL
+    )
+    fallback_model = (
+        os.getenv("GOOGLE_FALLBACK_MODEL")
+        or os.getenv("GEMINI_FALLBACK_MODEL")
+        or DEFAULT_GOOGLE_FALLBACK_MODEL
+    )
+    if not api_key:
         raise ConfigurationError(
-            f"Missing required configuration: {', '.join(missing)}. "
+            "Missing required configuration: GOOGLE_API_KEY (or GEMINI_API_KEY). "
             "Set these values in .env or the environment."
         )
 
@@ -66,6 +78,9 @@ def load_settings() -> Settings:
     return Settings(
         google_api_key=api_key,
         google_model=model,
-        database_path=os.getenv("DATABASE_PATH") or str(DEFAULT_DATABASE_PATH),
+        google_fallback_model=fallback_model,
+        groq_api_key=os.getenv("GROQ_API_KEY") or None,
+        groq_model=os.getenv("GROQ_MODEL") or DEFAULT_GROQ_MODEL,
+        database_url=load_database_url(),
         ai_session_call_limit=call_limit,
     )

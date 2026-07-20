@@ -1,14 +1,63 @@
 import json
+from typing import Any, cast
 import unittest
+from unittest.mock import patch
 
 import tests._logging  # noqa: F401
 
-from src.database import AnalysisRepository
+from src.database import (
+    AnalysisRepository,
+    DatabaseError,
+    _PostgresRepository,
+)
 from src.schemas import AnalyzeRequest, ScamAnalysis
 from tests.factories import scenario_assessments
 
 
 class AnalysisRepositoryTests(unittest.IsolatedAsyncioTestCase):
+    def test_runtime_repository_rejects_non_postgresql_storage(self) -> None:
+        with self.assertRaises(DatabaseError):
+            AnalysisRepository("app.db")
+
+    def test_postgresql_connections_disable_prepared_statements(self) -> None:
+        database_url = "postgresql://test:test@localhost:5432/scamcheck"
+        repository = _PostgresRepository(database_url)
+
+        with patch("src.database.psycopg.connect") as connect:
+            repository._connect()
+
+        connect.assert_called_once_with(
+            database_url,
+            connect_timeout=5,
+            prepare_threshold=None,
+        )
+
+    def test_postgresql_schema_contains_migrations_and_enables_rls(self) -> None:
+        class RecordingConnection:
+            def __init__(self) -> None:
+                self.statements: list[str] = []
+
+            def execute(
+                self, query: str, _parameters: object = None
+            ) -> "RecordingConnection":
+                self.statements.append(" ".join(query.split()))
+                return self
+
+        connection = RecordingConnection()
+        _PostgresRepository._create_schema(cast(Any, connection))
+        sql = "\n".join(connection.statements)
+
+        self.assertIn("pg_advisory_xact_lock", sql)
+        self.assertIn("CREATE TABLE IF NOT EXISTS analyses", sql)
+        self.assertIn("CREATE TABLE IF NOT EXISTS ai_calls", sql)
+        self.assertIn("CREATE TABLE IF NOT EXISTS analysis_requests", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS scenarios JSONB", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS indicator_evidence JSONB", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS actions JSONB", sql)
+        self.assertIn("ALTER TABLE analyses ENABLE ROW LEVEL SECURITY", sql)
+        self.assertIn("ALTER TABLE ai_calls ENABLE ROW LEVEL SECURITY", sql)
+        self.assertIn("ALTER TABLE analysis_requests ENABLE ROW LEVEL SECURITY", sql)
+
     async def test_analysis_request_claims_are_session_scoped_and_releasable(self) -> None:
         repository = AnalysisRepository(":memory:")
         await repository.initialize()

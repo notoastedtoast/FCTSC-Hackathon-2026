@@ -155,13 +155,17 @@ class ScamAnalysis(BaseModel):
         ge=0, le=1, description="Likelihood the text is a scam, from 0 to 1"
     )
     reasoning: str = Field(min_length=1, max_length=1_000)
-    indicators: list[str] = Field(default_factory=list, max_length=4)
-    indicator_evidence: list[IndicatorEvidence] = Field(default_factory=list, max_length=4)
+    indicators: list[str] = Field(default_factory=lambda: list[str](), max_length=4)
+    indicator_evidence: list[IndicatorEvidence] = Field(
+        default_factory=lambda: list[IndicatorEvidence](), max_length=4
+    )
     actions: list[ActionText] = Field(
         default_factory=lambda: list(DEFAULT_ACTIONS), min_length=3, max_length=3
     )
     scenarios: list[ScamScenarioAssessment] = Field(min_length=12, max_length=12)
-    main_categories: list[ScamScenario] = Field(default_factory=list, max_length=4)
+    main_categories: list[ScamScenario] = Field(
+        default_factory=lambda: list[ScamScenario](), max_length=4
+    )
     provider_risk_level: RiskLevel | None = Field(
         default=None, alias="risk_level", exclude=True
     )

@@ -1,6 +1,6 @@
-import unittest
+import asyncio
 import json
-from unittest.mock import AsyncMock, patch
+import unittest
 
 import httpx
 import tests._logging  # noqa: F401
@@ -9,7 +9,7 @@ from src.analyzer import (
     AnalysisError,
     CharacterError,
     DETECTIVE_TIMEOUT_SECONDS,
-    GeminiScamAnalysis,
+    GeneratedScamAnalysis,
     ScamAnalyzer,
     parse_detective_response,
 )
@@ -22,6 +22,29 @@ from src.schemas import (
     ScamAnalysis,
 )
 from tests.factories import scenario_assessments, scenario_payload
+
+
+def valid_detective_json() -> str:
+    return json.dumps(
+        {
+            "risk_level": "safe",
+            "confidence": 0.1,
+            "reasoning": "Không có dấu hiệu lừa đảo cụ thể.",
+            "indicator_evidence": [],
+            "actions": [
+                "Không chia sẻ thông tin nhạy cảm.",
+                "Xác minh người gửi khi cần.",
+                "Dừng lại nếu có yêu cầu bất thường.",
+            ],
+            "scenarios": [],
+        }
+    )
+
+
+def gemini_response(response_text: str) -> dict[str, object]:
+    return {
+        "candidates": [{"content": {"parts": [{"text": response_text}]}}]
+    }
 
 
 class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
@@ -48,7 +71,7 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(generation_config["responseMimeType"], "application/json")
             self.assertEqual(
                 generation_config["responseJsonSchema"],
-                GeminiScamAnalysis.model_json_schema(),
+                GeneratedScamAnalysis.model_json_schema(),
             )
             self.assertEqual(generation_config["temperature"], 0)
             self.assertEqual(
@@ -190,7 +213,137 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertLessEqual(len(result.main_categories), 4)
 
-    async def test_rate_limit_retries_twice_with_increasing_delay(self) -> None:
+    async def test_http_failure_uses_secondary_gemini_model_without_retry_delay(
+        self,
+    ) -> None:
+        attempted_models: list[str] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            attempted_models.append(str(request.url))
+            if "gemini-primary" in str(request.url):
+                return httpx.Response(503, request=request)
+            return httpx.Response(200, json=gemini_response(valid_detective_json()))
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="https://provider.test/"
+        ) as client:
+            analyzer = ScamAnalyzer(
+                Settings(
+                    google_api_key="test-key",
+                    google_model="gemini-primary",
+                    google_fallback_model="gemini-secondary",
+                ),
+                client=client,
+            )
+            result = await analyzer.analyze(AnalyzeRequest(text="hello"))
+
+        self.assertEqual(result.provider_risk_level, "safe")
+        self.assertEqual(len(attempted_models), 2)
+        self.assertIn("gemini-primary", attempted_models[0])
+        self.assertIn("gemini-secondary", attempted_models[1])
+
+    async def test_invalid_primary_output_uses_secondary_model(self) -> None:
+        attempts = 0
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            attempts += 1
+            response_text = "not-json" if attempts == 1 else valid_detective_json()
+            return httpx.Response(200, json=gemini_response(response_text))
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="https://provider.test/"
+        ) as client:
+            analyzer = ScamAnalyzer(
+                Settings(
+                    google_api_key="test-key",
+                    google_model="gemini-primary",
+                    google_fallback_model="gemini-secondary",
+                ),
+                client=client,
+            )
+            result = await analyzer.analyze(AnalyzeRequest(text="hello"))
+
+        self.assertEqual(result.provider_risk_level, "safe")
+        self.assertFalse(result.fallback_used)
+        self.assertEqual(attempts, 2)
+
+    async def test_timed_out_primary_leaves_budget_for_secondary_model(self) -> None:
+        attempts = 0
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                await asyncio.sleep(0.03)
+            return httpx.Response(200, json=gemini_response(valid_detective_json()))
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="https://provider.test/"
+        ) as client:
+            analyzer = ScamAnalyzer(
+                Settings(
+                    google_api_key="test-key",
+                    google_model="gemini-primary",
+                    google_fallback_model="gemini-secondary",
+                ),
+                client=client,
+            )
+            result = await analyzer._generate(
+                "system",
+                "prompt",
+                GeneratedScamAnalysis,
+                timeout_seconds=0.02,
+                max_output_tokens=100,
+                validator=lambda response_text: response_text,
+            )
+
+        self.assertEqual(result, valid_detective_json())
+        self.assertEqual(attempts, 2)
+
+    async def test_groq_is_third_target_after_both_gemini_models_fail(self) -> None:
+        attempted_providers: list[str] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.host == "api.groq.com":
+                attempted_providers.append("groq")
+                self.assertEqual(
+                    request.headers.get("authorization"), "Bearer groq-test-key"
+                )
+                payload = json.loads(request.content.decode("utf-8"))
+                self.assertEqual(payload["model"], "openai/gpt-oss-20b")
+                self.assertEqual(payload["response_format"]["type"], "json_schema")
+                return httpx.Response(
+                    200,
+                    json={
+                        "choices": [
+                            {"message": {"content": valid_detective_json()}}
+                        ]
+                    },
+                )
+            attempted_providers.append("gemini")
+            return httpx.Response(503, request=request)
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="https://provider.test/"
+        ) as client:
+            analyzer = ScamAnalyzer(
+                Settings(
+                    google_api_key="test-key",
+                    google_model="gemini-primary",
+                    google_fallback_model="gemini-secondary",
+                    groq_api_key="groq-test-key",
+                ),
+                client=client,
+            )
+            result = await analyzer.analyze(AnalyzeRequest(text="hello"))
+
+        self.assertEqual(result.provider_risk_level, "safe")
+        self.assertEqual(attempted_providers, ["gemini", "gemini", "groq"])
+
+    async def test_all_transport_failures_raise_analysis_error_once_per_target(
+        self,
+    ) -> None:
         attempts = 0
 
         async def handler(request: httpx.Request) -> httpx.Response:
@@ -202,15 +355,18 @@ class AnalyzerTests(unittest.IsolatedAsyncioTestCase):
             transport=httpx.MockTransport(handler), base_url="https://provider.test/"
         ) as client:
             analyzer = ScamAnalyzer(
-                Settings(google_api_key="test-key", google_model="gemini-test"),
+                Settings(
+                    google_api_key="test-key",
+                    google_model="gemini-primary",
+                    google_fallback_model="gemini-secondary",
+                    groq_api_key="groq-test-key",
+                ),
                 client=client,
             )
-            with patch("src.analyzer.asyncio.sleep", new=AsyncMock()) as sleep:
-                with self.assertRaises(AnalysisError):
-                    await analyzer.analyze(AnalyzeRequest(text="hello"))
+            with self.assertRaises(AnalysisError):
+                await analyzer.analyze(AnalyzeRequest(text="hello"))
 
         self.assertEqual(attempts, 3)
-        self.assertEqual([call.args[0] for call in sleep.await_args_list], [0.5, 1.0])
 
     async def test_respond_uses_validated_result_and_enforces_voice(self) -> None:
         async def handler(request: httpx.Request) -> httpx.Response:

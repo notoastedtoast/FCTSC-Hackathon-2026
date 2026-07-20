@@ -27,7 +27,7 @@ from .characters import CALMING_GUIDE, CharacterSpec
 from .config import (
     DEFAULT_AI_SESSION_CALL_LIMIT,
     Settings,
-    load_database_path,
+    load_database_url,
     load_settings,
 )
 from .database import (
@@ -235,12 +235,20 @@ async def frontend_service_worker() -> Response:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configured_settings = cast(Settings | None, app.state.settings)
     active_analyzer = cast(Analyzer | None, app.state.analyzer)
+    repository = cast(Repository | None, app.state.repository)
     if active_analyzer is None:
         configured_settings = configured_settings or load_settings()
         active_analyzer = ScamAnalyzer(configured_settings)
         app.state.analyzer = active_analyzer
+    if repository is None:
+        database_url = (
+            configured_settings.database_url
+            if configured_settings is not None and configured_settings.database_url
+            else load_database_url()
+        )
+        repository = AnalysisRepository(database_url)
+        app.state.repository = repository
 
-    repository = cast(Repository, app.state.repository)
     await repository.initialize()
     if configured_settings is not None:
         logger.info("Scam analysis API started with model %s", configured_settings.google_model)
@@ -471,14 +479,11 @@ def create_app(
     analyzer: Analyzer | None = None,
     repository: Repository | None = None,
 ) -> FastAPI:
-    repository_instance: Repository = repository or AnalysisRepository(
-        settings.database_path if settings is not None else load_database_path()
-    )
     app = FastAPI(title="Scam Analysis API", version="0.1.0", lifespan=lifespan)
     # Setting injected services here also supports ASGI test clients without lifespan handling.
     app.state.settings = settings
     app.state.analyzer = analyzer
-    app.state.repository = repository_instance
+    app.state.repository = repository
     app.state.ai_session_call_limit = (
         settings.ai_session_call_limit
         if settings is not None

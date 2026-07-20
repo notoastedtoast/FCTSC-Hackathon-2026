@@ -411,7 +411,7 @@ function renderHistory(){
     status.textContent=riskLevel?riskLabels[riskLevel]:'Chưa lưu kết quả';
     const mode=document.createElement('span');
     mode.className='history-mode';
-    mode.textContent=result?.mode==='offline'?'Ngoại tuyến':result?'Gemini':'Bản cũ';
+    mode.textContent=result?.mode==='offline'?'Ngoại tuyến':result?'Trực tuyến':'Bản cũ';
     meta.append(status,mode);
     const message=document.createElement('div');
     message.className='history-message-text';

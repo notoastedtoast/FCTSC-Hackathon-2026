@@ -149,7 +149,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
         self.assertIn('"/offline-analyzer.js"', service_worker)
-        self.assertIn('CACHE_NAME="scamcheck-shell-v10"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v11"', service_worker)
         self.assertIn("fetch(request)", service_worker)
         self.assertIn("const cacheKey=url.pathname", service_worker)
         self.assertIn("event.waitUntil(refresh.then(", service_worker)

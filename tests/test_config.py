@@ -5,6 +5,10 @@ from unittest.mock import patch
 from src.config import (
     ConfigurationError,
     DEFAULT_AI_SESSION_CALL_LIMIT,
+    DEFAULT_GOOGLE_FALLBACK_MODEL,
+    DEFAULT_GOOGLE_MODEL,
+    DEFAULT_GROQ_MODEL,
+    load_database_url,
     load_settings,
 )
 
@@ -14,6 +18,7 @@ class ConfigurationTests(unittest.TestCase):
         base_environment = {
             "GOOGLE_API_KEY": "test-key",
             "GOOGLE_MODEL": "gemini-test",
+            "DATABASE_URL": "postgresql://test:test@localhost:5432/scamcheck",
         }
         with (
             patch("src.config.load_dotenv"),
@@ -46,6 +51,7 @@ class ConfigurationTests(unittest.TestCase):
                         {
                             "GOOGLE_API_KEY": "test-key",
                             "GOOGLE_MODEL": "gemini-test",
+                            "DATABASE_URL": "postgresql://test:test@localhost:5432/scamcheck",
                             "AI_SESSION_CALL_LIMIT": value,
                         },
                         clear=True,
@@ -53,6 +59,72 @@ class ConfigurationTests(unittest.TestCase):
                 ):
                     with self.assertRaises(ConfigurationError):
                         load_settings()
+
+    def test_database_url_accepts_supabase_alias_and_rejects_other_schemes(self) -> None:
+        with (
+            patch("src.config.load_dotenv"),
+            patch.dict(
+                os.environ,
+                {"SUPABASE_DB_URL": "postgres://test:test@localhost/postgres"},
+                clear=True,
+            ),
+        ):
+            database_url = load_database_url()
+
+        self.assertEqual(database_url, "postgres://test:test@localhost/postgres")
+
+        for environment in ({}, {"DATABASE_URL": "sqlite:///app.db"}):
+            with self.subTest(environment=environment):
+                with (
+                    patch("src.config.load_dotenv"),
+                    patch.dict(os.environ, environment, clear=True),
+                ):
+                    with self.assertRaises(ConfigurationError):
+                        load_database_url()
+
+    def test_model_uses_documented_default(self) -> None:
+        with (
+            patch("src.config.load_dotenv"),
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_API_KEY": "test-key",
+                    "DATABASE_URL": "postgresql://test:test@localhost/postgres",
+                },
+                clear=True,
+            ),
+        ):
+            settings = load_settings()
+
+        self.assertEqual(settings.google_model, DEFAULT_GOOGLE_MODEL)
+        self.assertEqual(
+            settings.google_fallback_model, DEFAULT_GOOGLE_FALLBACK_MODEL
+        )
+        self.assertEqual(settings.groq_model, DEFAULT_GROQ_MODEL)
+        self.assertIsNone(settings.groq_api_key)
+
+    def test_provider_fallbacks_accept_environment_overrides(self) -> None:
+        with (
+            patch("src.config.load_dotenv"),
+            patch.dict(
+                os.environ,
+                {
+                    "GOOGLE_API_KEY": "test-key",
+                    "GOOGLE_MODEL": "gemini-primary",
+                    "GOOGLE_FALLBACK_MODEL": "gemini-secondary",
+                    "GROQ_API_KEY": "groq-test-key",
+                    "GROQ_MODEL": "groq-test-model",
+                    "DATABASE_URL": "postgresql://test:test@localhost/postgres",
+                },
+                clear=True,
+            ),
+        ):
+            settings = load_settings()
+
+        self.assertEqual(settings.google_model, "gemini-primary")
+        self.assertEqual(settings.google_fallback_model, "gemini-secondary")
+        self.assertEqual(settings.groq_api_key, "groq-test-key")
+        self.assertEqual(settings.groq_model, "groq-test-model")
 
 
 if __name__ == "__main__":

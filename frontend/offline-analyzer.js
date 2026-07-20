@@ -130,7 +130,7 @@ const ScamCheckOffline=(()=>{
   const ACTIONS=[
     'Không trả lời, chuyển tiền hoặc cung cấp thông tin nhạy cảm.',
     'Tự liên hệ tổ chức hoặc người gửi qua kênh chính thức.',
-    'Khi có mạng, kiểm tra lại bằng Gemini hoặc nhờ người tin cậy hỗ trợ.'
+    'Khi có mạng, kiểm tra lại trực tuyến hoặc nhờ người tin cậy hỗ trợ.'
   ];
 
   function analyze(text){
