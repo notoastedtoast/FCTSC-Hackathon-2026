@@ -824,7 +824,7 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
 
   riskCard.className=`risk-card ${risk.className}`;
   riskLabel.textContent=payload.offline&&detective.risk_level==='safe'
-    ?'Chưa thấy dấu hiệu'
+    ?(detective.indicators?.length?'Rủi ro thấp':'Chưa thấy dấu hiệu')
     :risk.label;
   riskDescription.textContent=payload.offline
     ?`Đánh giá sơ bộ ngoại tuyến. ${risk.description}`

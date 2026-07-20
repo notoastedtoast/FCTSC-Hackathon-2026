@@ -241,8 +241,9 @@ legacy-schema test in `tests/test_database.py`.
   messages, including the four named library groups and prompt-injection attempts.
 - `tests/test_frontend.py`: validates that the root page calls the analysis and usage
   APIs online; renders Detective/Cô tâm lý separately; keeps the balanced practice dataset
-  and grading in the browser; wires the explicitly preliminary offline analyzer; and keeps
-  analysis, local history, and practice in separate hash-routed views.
+  and grading in the browser; wires the explicitly preliminary offline analyzer; executes
+  representative offline risk/safety cases when Node.js is available; and keeps analysis,
+  local history, and practice in separate hash-routed views.
 - `tests/factories.py`: canonical ordered scenario builders shared by API/analyzer/database
   tests. Use these instead of hand-building a partial scenario matrix.
 - `tests/_logging.py`: disables expected error logs during tests. Import it before code

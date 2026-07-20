@@ -2,6 +2,8 @@ from collections import Counter
 import json
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import unittest
 
 
@@ -147,7 +149,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
         self.assertIn('"/offline-analyzer.js"', service_worker)
-        self.assertIn('CACHE_NAME="scamcheck-shell-v9"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v10"', service_worker)
         self.assertIn("fetch(request)", service_worker)
         self.assertIn("const cacheKey=url.pathname", service_worker)
         self.assertIn("event.waitUntil(refresh.then(", service_worker)
@@ -216,3 +218,97 @@ class FrontendTests(unittest.TestCase):
             & {item["text"] for item in regression}
         )
         self.assertFalse((root / "src" / "data" / "sample_messages.json").exists())
+
+    def test_offline_analyzer_handles_common_risk_and_safety_contexts(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node.js is required for offline analyzer behavior checks")
+
+        root = Path(__file__).resolve().parent.parent
+        cases = [
+            {
+                "name": "ordinary greeting",
+                "text": "Xin chào, tôi đến từ Hà Nội. Cảm ơn bạn đã trả lời tin nhắn này.",
+                "risk": "safe",
+            },
+            {
+                "name": "OTP safety warning",
+                "text": "Không bao giờ gửi mã OTP cho bất kỳ ai.",
+                "risk": "safe",
+            },
+            {
+                "name": "OTP conditional threat",
+                "text": "Nếu không gửi mã OTP, giao dịch sẽ không hoàn tất.",
+                "risk": "dangerous",
+            },
+            {
+                "name": "QR login phishing",
+                "text": "Tài khoản ngân hàng có dấu hiệu bất thường. Hãy quét mã QR bên dưới để đăng nhập và kiểm tra.",
+                "risk": "dangerous",
+            },
+            {
+                "name": "remote-access safety warning",
+                "text": "Cảnh báo bảo mật: không cài AnyDesk hoặc chia sẻ màn hình với người lạ.",
+                "risk": "safe",
+            },
+            {
+                "name": "remote-access request",
+                "text": "Hãy cài AnyDesk để kỹ thuật viên điều khiển từ xa và khôi phục tài khoản.",
+                "risk": "dangerous",
+            },
+            {
+                "name": "ordinary email address",
+                "text": "Bạn có thể gửi tài liệu tới support@example.com vào ngày mai.",
+                "risk": "safe",
+            },
+            {
+                "name": "completed transfer",
+                "text": "Tôi đã chuyển khoản tiền ăn trưa cho bạn rồi, kiểm tra giúp nhé.",
+                "risk": "safe",
+            },
+            {
+                "name": "official utility payment",
+                "text": "Bạn vui lòng thanh toán hóa đơn điện tháng này qua ứng dụng chính thức.",
+                "risk": "safe",
+            },
+            {
+                "name": "delivery fee scam",
+                "text": "Đơn hàng chưa giao vì thiếu phí 25.000 đồng. Thanh toán ngay tại bit.ly/nhan-hang.",
+                "risk": "dangerous",
+            },
+        ]
+        corpus = json.loads(
+            (root / "tests" / "labeled_messages.json").read_text(encoding="utf-8")
+        )
+        cases.extend(
+            {
+                "name": f"corpus: {item['id']}",
+                "text": item["text"],
+                "risk": item["expected"],
+            }
+            for item in corpus
+        )
+        runner = """
+const fs=require('node:fs');
+const analyzer=require(process.argv[1]);
+const cases=JSON.parse(fs.readFileSync(0,'utf8'));
+const results=cases.map(item=>({
+  name:item.name,
+  expected:item.risk,
+  actual:analyzer.analyze(item.text).detective.risk_level
+}));
+process.stdout.write(JSON.stringify(results));
+"""
+        completed = subprocess.run(
+            [node, "-e", runner, str(root / "frontend" / "offline-analyzer.js")],
+            input=json.dumps(cases, ensure_ascii=False),
+            capture_output=True,
+            check=True,
+            encoding="utf-8",
+        )
+        results = json.loads(completed.stdout)
+
+        self.assertEqual(
+            [(item["name"], item["actual"]) for item in results],
+            [(item["name"], item["expected"]) for item in results],
+        )

@@ -3,15 +3,33 @@ const ScamCheckOffline=(()=>{
   const TRUSTED_URL_PATTERN=/^(?:https?:\/\/)?accounts\.google\.com(?:[/:?#]|$)/iu;
 
   function findUntrustedUrl(text){
-    const matches=text.match(URL_PATTERN)||[];
-    return matches.find(value=>{
+    const matches=[...text.matchAll(URL_PATTERN)];
+    for(const match of matches){
+      const value=match[0];
+      const index=match.index||0;
+      if(index>0&&text[index-1]==='@')continue;
       const normalized=value.replace(/[.,;:!?]+$/u,'');
-      return !TRUSTED_URL_PATTERN.test(normalized);
-    })||null;
+      if(!TRUSTED_URL_PATTERN.test(normalized))return normalized;
+    }
+    return null;
   }
 
   function foldText(text){
     return text.normalize('NFD').replace(/[\u0300-\u036f]/gu,'').replace(/đ/giu,'d');
+  }
+
+  function hasApplicableIgnore(text,pattern){
+    if(!pattern)return false;
+    const match=text.match(pattern);
+    if(!match)return false;
+    const prefix=text.slice(Math.max(0,(match.index||0)-16),match.index||0);
+    return !/\b(?:nếu|neu)\s+(?:(?:bạn|bác|ban|bac)\s+)?$/iu.test(prefix);
+  }
+
+  function findAccountAccessPrompt(text){
+    if(!/(?:tài\s+khoản|ngân\s+hàng|bank\s+account)/iu.test(text))return null;
+    const prompt=text.match(/(?:(?:quét|scan).{0,15}(?:mã\s+)?qr|(?:bấm|nhấn|click).{0,25}(?:nút|liên\s+kết|link)).{0,60}(?:đăng\s+nhập|xác\s+minh|kiểm\s+tra)|(?:đăng\s+nhập|xác\s+minh).{0,60}(?:(?:quét|scan).{0,15}(?:mã\s+)?qr|(?:bấm|nhấn|click).{0,25}(?:nút|liên\s+kết|link))/iu);
+    return prompt?.[0]||null;
   }
 
   const RULES=[
@@ -19,7 +37,9 @@ const ScamCheckOffline=(()=>{
       label:'Yêu cầu mã xác thực hoặc thông tin đăng nhập',
       weight:4,
       pattern:/(?:gửi|cung cấp|nhập|đọc|chia sẻ|tiết lộ|send|share|provide|enter).{0,35}(?:mã\s+otp|otp|mã\s+xác\s+(?:thực|nhận)|mật\s+khẩu|password|passcode|mã\s+pin)|(?:mã\s+otp|otp|mật\s+khẩu|password).{0,35}(?:cho\s+(?:tôi|chúng tôi)|vào\s+(?:link|liên kết)|để\s+xác\s+minh|to\s+me)/iu,
-      foldedPattern:/(?:gui|cung cap|nhap|doc|chia se|tiet lo).{0,35}(?:ma\s+otp|otp|ma\s+xac\s+(?:thuc|nhan)|mat\s+khau|ma\s+pin)/iu
+      foldedPattern:/(?:gui|cung cap|nhap|doc|chia se|tiet lo).{0,35}(?:ma\s+otp|otp|ma\s+xac\s+(?:thuc|nhan)|mat\s+khau|ma\s+pin)/iu,
+      ignorePattern:/(?:(?:không\s+bao\s+giờ|tuyệt\s+đối\s+không|không\s+(?:nên|được)|đừng|không).{0,12}(?:gửi|cung cấp|nhập|đọc|chia sẻ|tiết lộ).{0,35}(?:mã\s+otp|otp|mã\s+xác\s+(?:thực|nhận)|mật\s+khẩu|password|passcode|mã\s+pin)|(?:mã\s+otp|otp|mật\s+khẩu|password).{0,50}(?:không\s+bao\s+giờ|tuyệt\s+đối\s+không|không\s+(?:nên|được)|đừng|không).{0,12}(?:gửi|chia sẻ|tiết lộ).{0,20}(?:cho|với)\s+(?:ai|bất\s+kỳ\s+ai|người\s+khác))/iu,
+      foldedIgnorePattern:/(?:(?:khong\s+bao\s+gio|tuyet\s+doi\s+khong|khong\s+(?:nen|duoc)|dung|khong).{0,12}(?:gui|cung cap|nhap|doc|chia se|tiet lo).{0,35}(?:ma\s+otp|otp|ma\s+xac\s+(?:thuc|nhan)|mat\s+khau|password|passcode|ma\s+pin)|(?:ma\s+otp|otp|mat\s+khau|password).{0,50}(?:khong\s+bao\s+gio|tuyet\s+doi\s+khong|khong\s+(?:nen|duoc)|dung|khong).{0,12}(?:gui|chia se|tiet lo).{0,20}(?:cho|voi)\s+(?:ai|bat\s+ky\s+ai|nguoi\s+khac))/iu
     },
     {
       label:'Người gửi xin mã xác thực cá nhân',
@@ -29,13 +49,22 @@ const ScamCheckOffline=(()=>{
     {
       label:'Yêu cầu cài phần mềm hoặc điều khiển thiết bị từ xa',
       weight:4,
-      pattern:/(?:anydesk|teamviewer|ultraviewer|quicksupport|chia\s+sẻ\s+màn\s+hình|điều\s+khiển\s+từ\s+xa|cài\s+(?:ứng\s+dụng|phần\s+mềm).{0,30}(?:hỗ\s+trợ|xử\s+lý|khôi\s+phục))/iu
+      pattern:/(?:anydesk|teamviewer|ultraviewer|quicksupport|chia\s+sẻ\s+màn\s+hình|điều\s+khiển\s+từ\s+xa|cài\s+(?:ứng\s+dụng|phần\s+mềm).{0,30}(?:hỗ\s+trợ|xử\s+lý|khôi\s+phục))/iu,
+      ignorePattern:/(?:không\s+bao\s+giờ|tuyệt\s+đối\s+không|không\s+(?:nên|được)|đừng|không).{0,35}(?:cài|dùng|sử\s+dụng|mở|chia\s+sẻ).{0,25}(?:anydesk|teamviewer|ultraviewer|quicksupport|ứng\s+dụng|phần\s+mềm|màn\s+hình)/iu,
+      foldedIgnorePattern:/(?:khong\s+bao\s+gio|tuyet\s+doi\s+khong|khong\s+(?:nen|duoc)|dung|khong).{0,35}(?:cai|dung|su\s+dung|mo|chia\s+se).{0,25}(?:anydesk|teamviewer|ultraviewer|quicksupport|ung\s+dung|phan\s+mem|man\s+hinh)/iu
     },
     {
       label:'Yêu cầu chuyển tiền hoặc đóng phí',
       weight:3,
       pattern:/(?:chuyển\s+(?:khoản|tiền)|thanh\s+toán|đóng\s+phí|nộp\s+phí|phí\s+(?:hồ\s+sơ|kích\s+hoạt|vận\s+chuyển)|mua\s+thẻ\s+(?:quà\s+tặng|gift)|gift\s*card|send\s+(?:money|payment)|wire\s+transfer|chuyển.{0,20}(?:bitcoin|usdt))/iu,
-      foldedPattern:/(?:chuyen\s+(?:khoan|tien)|thanh\s+toan|dong\s+phi|nop\s+phi|phi\s+(?:ho\s+so|kich\s+hoat|van\s+chuyen)|mua\s+the\s+qua\s+tang)/iu
+      foldedPattern:/(?:chuyen\s+(?:khoan|tien)|thanh\s+toan|dong\s+phi|nop\s+phi|phi\s+(?:ho\s+so|kich\s+hoat|van\s+chuyen)|mua\s+the\s+qua\s+tang)/iu,
+      ignorePattern:/(?:(?:đã|vừa)\s+chuyển\s+(?:khoản|tiền)|(?:hóa\s+đơn\s+(?:điện|nước|internet)|cước\s+(?:điện\s+thoại|internet)).{0,60}(?:ứng\s+dụng|kênh|trang\s+web)\s+chính\s+thức|(?:không\s+bao\s+giờ|tuyệt\s+đối\s+không|không\s+(?:nên|được)|đừng).{0,20}(?:yêu\s+cầu.{0,35})?(?:chuyển\s+(?:khoản|tiền)|thanh\s+toán|đóng\s+phí|nộp\s+phí))/iu,
+      foldedIgnorePattern:/(?:(?:da|vua)\s+chuyen\s+(?:khoan|tien)|(?:hoa\s+don\s+(?:dien|nuoc|internet)|cuoc\s+(?:dien\s+thoai|internet)).{0,60}(?:ung\s+dung|kenh|trang\s+web)\s+chinh\s+thuc|(?:khong\s+bao\s+gio|tuyet\s+doi\s+khong|khong\s+(?:nen|duoc)|dung).{0,20}(?:yeu\s+cau.{0,35})?(?:chuyen\s+(?:khoan|tien)|thanh\s+toan|dong\s+phi|nop\s+phi))/iu
+    },
+    {
+      label:'Dẫn tới đăng nhập hoặc xác minh bằng mã QR hay nút bấm',
+      weight:4,
+      find:findAccountAccessPrompt
     },
     {
       label:'Đường dẫn cần được xác minh độc lập',
@@ -44,8 +73,10 @@ const ScamCheckOffline=(()=>{
     },
     {
       label:'Mạo danh tổ chức hoặc người có thẩm quyền',
-      weight:1,
-      pattern:/(?:ngân\s+hàng|công\s+an|cảnh\s+sát|tòa\s+án|viện\s+kiểm\s+sát|cơ\s+quan\s+thuế|nhân\s+viên\s+kỹ\s+thuật|bank\s+(?:security|support)|police|government\s+agency)/iu
+      weight:2,
+      pattern:/(?:(?:tôi|chúng\s+tôi|đây\s+là).{0,25}(?:nhân\s+viên\s+ngân\s+hàng|công\s+an|cảnh\s+sát|tòa\s+án|viện\s+kiểm\s+sát|cơ\s+quan\s+thuế|nhân\s+viên\s+kỹ\s+thuật)|(?:ngân\s+hàng|công\s+an|cảnh\s+sát|tòa\s+án|viện\s+kiểm\s+sát|cơ\s+quan\s+thuế|bank\s+(?:security|support)|police|government\s+agency).{0,35}(?:thông\s+báo|yêu\s+cầu|điều\s+tra|triệu\s+tập|tài\s+khoản\s+(?:của\s+)?(?:bạn|bác)))/iu,
+      ignorePattern:/(?:ngân\s+hàng|công\s+an|cảnh\s+sát|cơ\s+quan).{0,25}(?:không\s+bao\s+giờ|sẽ\s+không|không).{0,20}yêu\s+cầu/iu,
+      foldedIgnorePattern:/(?:ngan\s+hang|cong\s+an|canh\s+sat|co\s+quan).{0,25}(?:khong\s+bao\s+gio|se\s+khong|khong).{0,20}yeu\s+cau/iu
     },
     {
       label:'Tạo áp lực phải hành động gấp',
@@ -114,6 +145,7 @@ const ScamCheckOffline=(()=>{
         if(foldedMatch)excerpt=text.slice(foldedMatch.index,foldedMatch.index+foldedMatch[0].length);
       }
       if(!excerpt)return;
+      if(hasApplicableIgnore(text,rule.ignorePattern)||hasApplicableIgnore(foldedText,rule.foldedIgnorePattern))return;
       score+=rule.weight;
       findings.push({label:rule.label,excerpt,weight:rule.weight});
     });
@@ -129,7 +161,9 @@ const ScamCheckOffline=(()=>{
       ?`Đánh giá ngoại tuyến phát hiện ${findings.length} dấu hiệu rủi ro, trong đó có yêu cầu hoặc thủ thuật có mức nguy hiểm cao. Đây là kết quả sơ bộ từ các quy tắc lưu trên thiết bị.`
       :riskLevel==='suspicious'
         ?`Đánh giá ngoại tuyến phát hiện ${findings.length} dấu hiệu cần xác minh thêm. Đây là kết quả sơ bộ từ các quy tắc lưu trên thiết bị.`
-        :'Đánh giá ngoại tuyến chưa nhận ra dấu hiệu lừa đảo phổ biến. Kết quả sơ bộ này không thể khẳng định tin nhắn an toàn; bác vẫn nên xác minh người gửi.';
+        :findings.length
+          ?`Đánh giá ngoại tuyến nhận ra ${findings.length} chi tiết có thể xuất hiện trong giao tiếp thông thường nhưng chưa đủ để kết luận có dấu hiệu lừa đảo. Kết quả sơ bộ này không thể khẳng định tin nhắn an toàn.`
+          :'Đánh giá ngoại tuyến chưa nhận ra dấu hiệu lừa đảo phổ biến. Kết quả sơ bộ này không thể khẳng định tin nhắn an toàn; bác vẫn nên xác minh người gửi.';
 
     return {
       offline:true,
