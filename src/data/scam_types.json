@@ -1,0 +1,86 @@
+[
+  {
+    "id": "bank-account-lock",
+    "name": "Dọa khóa tài khoản ngân hàng",
+    "description": "Kẻ gian mạo danh bộ phận an ninh ngân hàng, tạo cảm giác khẩn cấp rồi dẫn người nhận tới trang đăng nhập giả để lấy tên tài khoản, mật khẩu hoặc mã xác thực.",
+    "example_message": "Tài khoản của quý khách vừa đăng nhập bất thường và sẽ bị tạm khóa sau 30 phút. Xác minh ngay tại vietcornbank-secure.com.",
+    "group": "fake_bank"
+  },
+  {
+    "id": "bank-otp-support",
+    "name": "Nhân viên ngân hàng xin mã OTP",
+    "description": "Đối tượng gọi hoặc nhắn rằng đang hỗ trợ hủy giao dịch, hoàn tiền hay nâng hạn mức, sau đó yêu cầu đọc mã OTP vừa gửi tới điện thoại.",
+    "example_message": "Em gọi từ trung tâm thẻ. Bác đọc giúp em sáu số vừa nhận để em hủy khoản thanh toán nhầm.",
+    "group": "fake_bank"
+  },
+  {
+    "id": "bank-fake-refund",
+    "name": "Hoàn tiền ngân hàng giả",
+    "description": "Tin nhắn hứa hoàn một khoản phí hoặc giao dịch lỗi nhưng bắt người nhận điền thông tin thẻ trên biểu mẫu không thuộc tên miền chính thức.",
+    "example_message": "Ngân hàng đã duyệt hoàn phí thường niên 680.000 đồng. Bác nhập thông tin thẻ tại vietc0mbank-refund.net để nhận tiền.",
+    "group": "fake_bank"
+  },
+  {
+    "id": "police-money-laundering",
+    "name": "Điều tra rửa tiền giả",
+    "description": "Kẻ gian tự xưng điều tra viên, nói tài khoản của nạn nhân liên quan đường dây rửa tiền và yêu cầu chuyển tiền vào tài khoản kiểm tra.",
+    "example_message": "Tôi là cán bộ điều tra. Tài khoản của bác xuất hiện trong hồ sơ rửa tiền; chuyển toàn bộ số dư để chúng tôi đối soát trong hôm nay.",
+    "group": "fake_police"
+  },
+  {
+    "id": "police-fake-arrest-warrant",
+    "name": "Lệnh bắt và giấy triệu tập giả",
+    "description": "Đối tượng gửi hình ảnh văn bản giả, đe dọa bắt giữ và buộc người nhận giữ bí mật, cài ứng dụng hoặc làm việc qua cuộc gọi video.",
+    "example_message": "Bác đang có lệnh bắt khẩn cấp. Không được kể với người nhà và cài ứng dụng này để làm việc trực tuyến với cơ quan điều tra.",
+    "group": "fake_police"
+  },
+  {
+    "id": "police-traffic-fine",
+    "name": "Phạt nguội giao thông giả",
+    "description": "Tin nhắn mạo danh cơ quan công an báo vi phạm giao thông, kèm đường dẫn nộp phạt giả nhằm lấy thông tin cá nhân hoặc tiền.",
+    "example_message": "Phương tiện của bác có lỗi vượt đèn đỏ chưa xử lý. Xem biên bản và nộp phạt tại boc0ngan-traffic.com.",
+    "group": "fake_police"
+  },
+  {
+    "id": "prize-lucky-customer",
+    "name": "Khách hàng may mắn",
+    "description": "Người nhận được thông báo trúng quà dù không tham gia chương trình, sau đó bị yêu cầu đóng thuế hoặc phí hồ sơ trước khi nhận.",
+    "example_message": "Số điện thoại của bác đã trúng xe máy trong chương trình khách hàng may mắn. Chuyển 2 triệu tiền thuế để nhận giải.",
+    "group": "prize"
+  },
+  {
+    "id": "prize-social-media-event",
+    "name": "Giải thưởng sự kiện mạng xã hội",
+    "description": "Tài khoản giả fanpage báo người dùng thắng minigame, rồi gửi biểu mẫu thu thập giấy tờ, thông tin thẻ hoặc mã xác thực.",
+    "example_message": "Chúc mừng bác là người thắng minigame tháng này. Điền số căn cước và thông tin thẻ vào biểu mẫu để ban tổ chức gửi quà.",
+    "group": "prize"
+  },
+  {
+    "id": "prize-voucher-fee",
+    "name": "Phiếu mua hàng cần phí kích hoạt",
+    "description": "Đối tượng tặng phiếu mua hàng giá trị cao nhưng yêu cầu trả một khoản kích hoạt nhỏ qua liên kết hoặc mã QR không rõ nguồn gốc.",
+    "example_message": "Bác nhận voucher 10 triệu đồng từ chương trình tri ân. Thanh toán 99.000 đồng phí kích hoạt trước 18 giờ để sử dụng.",
+    "group": "prize"
+  },
+  {
+    "id": "delivery-redelivery-fee",
+    "name": "Phí giao lại đơn hàng",
+    "description": "Tin nhắn giả hãng vận chuyển nói giao hàng thất bại và yêu cầu trả một khoản phí nhỏ trên trang giả để lấy dữ liệu thẻ.",
+    "example_message": "Đơn DH48391 giao không thành công do thiếu địa chỉ. Thanh toán 12.000 đồng phí giao lại tại giaohangtietkiem-support.com.",
+    "group": "fake_delivery"
+  },
+  {
+    "id": "delivery-customs-charge",
+    "name": "Phí hải quan cho bưu kiện giả",
+    "description": "Đối tượng dựng một bưu kiện quốc tế không có thật, đòi phí thông quan hoặc bảo hiểm và liên tục tăng khoản phải đóng.",
+    "example_message": "Bưu kiện quốc tế của bác đang bị giữ tại kho. Nộp 850.000 đồng phí thông quan trong hôm nay để tránh hoàn hàng.",
+    "group": "fake_delivery"
+  },
+  {
+    "id": "delivery-fake-buyer",
+    "name": "Người mua gửi liên kết nhận tiền",
+    "description": "Kẻ gian giả người mua hàng, nói đã thanh toán qua đơn vị vận chuyển rồi gửi liên kết để người bán nhập tài khoản ngân hàng nhận tiền.",
+    "example_message": "Em đã đặt ship và thanh toán rồi. Bác mở ghn-payment.net, đăng nhập ngân hàng để xác nhận nhận tiền nhé.",
+    "group": "fake_delivery"
+  }
+]
