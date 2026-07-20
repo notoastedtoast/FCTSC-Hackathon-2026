@@ -107,6 +107,31 @@
         </div>
       </section>
 
+      <section id="processing-frame" class="processing-frame" role="status" aria-live="polite" aria-labelledby="processing-title" hidden>
+        <div class="scan-card">
+          <div class="scan-visual" aria-hidden="true">
+            <div class="scan-orbit scan-orbit-one"></div>
+            <div class="scan-orbit scan-orbit-two"></div>
+            <div class="scan-document">
+              <span class="scan-document-line wide"></span>
+              <span class="scan-document-line"></span>
+              <span class="scan-document-line medium"></span>
+              <span class="scan-document-line"></span>
+              <span class="scan-document-line short"></span>
+              <span class="scan-beam"></span>
+            </div>
+            <img class="scan-detective-avatar" src="./detective-avatar.png" alt="" width="92" height="92">
+          </div>
+          <div class="scan-copy">
+            <p class="eyebrow">Thám tử đang làm việc</p>
+            <h1 id="processing-title">Đang quét tin nhắn</h1>
+            <p id="processing-message">Đang đọc kỹ nội dung và tìm các dấu hiệu đáng ngờ…</p>
+            <div class="scan-progress" aria-hidden="true"><span></span></div>
+            <p class="scan-note">Bác giữ nguyên trang một chút nhé, kết quả sẽ tự xuất hiện khi phân tích hoàn tất.</p>
+          </div>
+        </div>
+      </section>
+
       <section id="result-frame" class="result-frame" aria-live="polite">
         <header class="result-header">
           <div><p id="result-context-label" class="eyebrow">Phân tích hoàn tất</p><h1>Kết quả kiểm tra</h1></div>
@@ -119,10 +144,16 @@
         </section>
 
         <div class="result-grid">
-          <section class="result-section">
-            <div id="detective-title" class="role-label">Thám tử</div>
-            <h2>Những dấu hiệu đáng chú ý</h2>
-            <div id="signal-list" class="signal-list"></div>
+          <section class="result-section detective-section">
+            <div class="detective-chat-heading">
+              <img class="detective-heading-avatar" src="./detective-avatar.png" alt="" width="54" height="54">
+              <div>
+                <div id="detective-title" class="role-label">Thám tử</div>
+                <h2>Những dấu hiệu đáng chú ý</h2>
+                <p class="detective-chat-status"><span aria-hidden="true"></span>Phản hồi phân tích</p>
+              </div>
+            </div>
+            <div id="signal-list" class="signal-list detective-message-list"></div>
           </section>
 
           <section class="result-section">
@@ -133,8 +164,8 @@
           </section>
         </div>
 
-        <section class="result-section action-section">
-          <div class="psychology-block">
+        <section id="action-section" class="result-section action-section">
+          <div id="psychology-block" class="psychology-block">
             <div id="psychology-title" class="role-label psychology-label">Cô tâm lý</div>
             <p id="psychology-message" class="psychology-message"></p>
           </div>

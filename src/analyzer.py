@@ -75,13 +75,26 @@ class GeminiResponse(BaseModel):
 
 
 class AnalysisError(RuntimeError):
-    """Raised when the Detective analysis cannot be completed safely."""
+    """Raised with a safe message that the HTTP layer may show to the user."""
+
+    DEFAULT_USER_MESSAGE = (
+        "Chưa thể hoàn tất kiểm tra lúc này. Bác vui lòng thử lại sau ít phút."
+    )
+
+    def __init__(self, message: str, *, user_message: str | None = None) -> None:
+        super().__init__(message)
+        self.user_message = user_message or self.DEFAULT_USER_MESSAGE
 
 
 class CharacterError(RuntimeError):
     """Raised when an optional character response cannot be completed safely."""
 
 
+# =============================================================================
+# HIGHLIGHT — GIÁ TRỊ MẶC ĐỊNH KHI KHÔNG ĐỌC ĐƯỢC KẾT QUẢ TỪ NHÀ CUNG CẤP
+# Kết quả này luôn hợp lệ theo ScamAnalysis và giữ mức cảnh báo thận trọng, nhờ đó
+# dữ liệu JSON thiếu trường hoặc lệch cấu trúc không làm hỏng toàn bộ ứng dụng.
+# =============================================================================
 def fallback_analysis() -> ScamAnalysis:
     """Return a conservative, fully valid result for malformed provider data."""
     return ScamAnalysis(
@@ -104,8 +117,14 @@ def fallback_analysis() -> ScamAnalysis:
     )
 
 
+# =============================================================================
+# HIGHLIGHT — HÀM ĐỌC KẾT QUẢ CHỊU LỖI
+# Hàm bóc tách và kiểm tra JSON do Gemini trả về. Nếu JSON sai cú pháp, thiếu trường,
+# sai kiểu dữ liệu hoặc vi phạm cấu trúc, khối except phía dưới trả fallback_analysis()
+# thay vì để exception làm ứng dụng gãy.
+# =============================================================================
 def parse_detective_response(response_text: str, original_text: str) -> ScamAnalysis:
-    """Validate the provider's top four and restore the internal scenario matrix."""
+    """Validate provider JSON, returning a safe default when its shape is invalid."""
     try:
         generated = GeminiScamAnalysis.model_validate_json(response_text)
         matching_evidence = [
@@ -139,6 +158,7 @@ def parse_detective_response(response_text: str, original_text: str) -> ScamAnal
             scenarios=expanded_scenarios,
         )
     except (ValidationError, TypeError, ValueError):
+        # Điểm chịu lỗi: mọi lỗi bóc tách/cấu trúc đã biết đều chuyển sang giá trị mặc định.
         logger.warning("The provider returned an invalid Detective response")
         return fallback_analysis()
 
@@ -195,7 +215,45 @@ UNTRUSTED_MESSAGE_JSON:
                 except (TypeError, ValueError):
                     return fallback_analysis()
                 return parse_detective_response(response_text, request.text)
-        except (TimeoutError, httpx.HTTPError) as exc:
+        except (TimeoutError, httpx.TimeoutException) as exc:
+            logger.exception("Detective request timed out: %s", type(exc).__name__)
+            raise AnalysisError(
+                "Analysis provider timed out",
+                user_message=(
+                    "Việc kiểm tra mất nhiều thời gian hơn dự kiến. "
+                    "Bác vui lòng thử lại."
+                ),
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            logger.exception(
+                "Detective provider rejected the request with status %s",
+                exc.response.status_code,
+            )
+            if exc.response.status_code == 429:
+                raise AnalysisError(
+                    "Analysis provider remained rate limited after retries",
+                    user_message=(
+                        "Dịch vụ phân tích đang nhận quá nhiều yêu cầu. Hệ thống đã "
+                        "tự thử lại 2 lần; bác vui lòng thử lại sau ít phút."
+                    ),
+                ) from exc
+            raise AnalysisError(
+                "Analysis provider returned an HTTP error",
+                user_message=(
+                    "Dịch vụ phân tích đang tạm gián đoạn. "
+                    "Bác vui lòng thử lại sau ít phút."
+                ),
+            ) from exc
+        except httpx.RequestError as exc:
+            logger.exception("Detective connection failed: %s", type(exc).__name__)
+            raise AnalysisError(
+                "Could not connect to analysis provider",
+                user_message=(
+                    "Chưa thể kết nối dịch vụ phân tích. "
+                    "Bác vui lòng kiểm tra mạng và thử lại."
+                ),
+            ) from exc
+        except httpx.HTTPError as exc:
             logger.exception("Detective request failed: %s", type(exc).__name__)
             raise AnalysisError("Analysis provider is unavailable") from exc
 
@@ -244,9 +302,10 @@ VALIDATED_DETECTIVE_RESULT:
             logger.warning(
                 "Character %s response failed: %s",
                 character.character_id,
-                type(exc).__name__,
+                type(exc).__name__
             )
             raise CharacterError("Optional character response is unavailable") from exc
+#
 
     async def _generate(
         self,

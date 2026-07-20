@@ -57,6 +57,7 @@ PROJECT_DIRECTORY = FilePath(__file__).resolve().parent.parent
 FRONTEND_DIRECTORY = PROJECT_DIRECTORY / "frontend"
 FRONTEND_INDEX = FRONTEND_DIRECTORY / "index.html"
 FRONTEND_LOGO = FRONTEND_DIRECTORY / "scamcheck-logo.png"
+FRONTEND_DETECTIVE_AVATAR = FRONTEND_DIRECTORY / "detective-avatar.png"
 FRONTEND_STYLES = FRONTEND_DIRECTORY / "styles.css"
 FRONTEND_SCRIPT = FRONTEND_DIRECTORY / "app.js"
 FRONTEND_OFFLINE_ANALYZER = FRONTEND_DIRECTORY / "offline-analyzer.js"
@@ -206,6 +207,10 @@ async def frontend_logo() -> Response:
     return Response(FRONTEND_LOGO.read_bytes(), media_type="image/png")
 
 
+async def frontend_detective_avatar() -> Response:
+    return Response(FRONTEND_DETECTIVE_AVATAR.read_bytes(), media_type="image/png")
+
+
 async def frontend_styles() -> Response:
     return Response(FRONTEND_STYLES.read_bytes(), media_type="text/css")
 
@@ -352,7 +357,7 @@ async def analyze(
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to complete scam analysis at this time",
+            detail=exc.user_message,
         ) from exc
 
     detective = DetectiveResult(
@@ -503,6 +508,14 @@ def create_app(
             methods=["GET"],
             include_in_schema=False,
             name="frontend-logo",
+        )
+    if FRONTEND_DETECTIVE_AVATAR.is_file():
+        app.add_api_route(
+            "/detective-avatar.png",
+            frontend_detective_avatar,
+            methods=["GET"],
+            include_in_schema=False,
+            name="frontend-detective-avatar",
         )
     if FRONTEND_STYLES.is_file():
         app.add_api_route(

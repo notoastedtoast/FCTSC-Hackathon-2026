@@ -30,6 +30,7 @@ class FrontendTests(unittest.TestCase):
         service_worker = (frontend / "service-worker.js").read_text(encoding="utf-8")
 
         self.assertTrue((frontend / "scamcheck-logo.png").is_file())
+        self.assertTrue((frontend / "detective-avatar.png").is_file())
         self.assertIn('href="./styles.css"', page)
         self.assertIn('src="./app.js"', page)
         self.assertIn('src="./offline-analyzer.js"', page)
@@ -37,7 +38,11 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn("<script>", page)
         self.assertIn(":root", styles)
         self.assertIn('id="detective-title"', page)
+        self.assertIn('src="./detective-avatar.png"', page)
+        self.assertIn('class="signal-list detective-message-list"', page)
         self.assertIn('id="psychology-title"', page)
+        self.assertIn('id="psychology-block"', page)
+        self.assertIn('id="action-section"', page)
         self.assertIn('id="psychology-message"', page)
         self.assertIn('id="result-context-label"', page)
         self.assertIn('id="practice-title"', page)
@@ -74,7 +79,9 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn("character-chat", page)
         self.assertNotIn('id="history-overlay"', page)
         self.assertNotIn('id="history-button"', page)
-        self.assertNotIn('id="processing-frame"', page)
+        self.assertIn('id="processing-frame"', page)
+        self.assertIn('id="processing-message"', page)
+        self.assertIn('class="scan-beam"', page)
         self.assertNotIn('id="cancel-check-button"', page)
         self.assertNotIn('id="result-back-button"', page)
         self.assertIn('id="history-return-button"', page)
@@ -95,14 +102,26 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("sessionAtLimit", script)
         self.assertIn("statusCode===429", script)
         self.assertIn("payload.character_notice", script)
+        self.assertIn("riskLevel==='suspicious'||riskLevel==='dangerous'", script)
+        self.assertIn("psychologyBlock.hidden=!shouldShow", script)
+        self.assertIn("classList.toggle('psychology-hidden',!shouldShow)", script)
         self.assertIn("voiceButton.setAttribute('aria-pressed','true')", script)
         self.assertIn("detective.indicator_evidence", script)
         self.assertIn("detective.actions", script)
+        self.assertIn("row.className=`detective-message-row", script)
+        self.assertIn("avatar.src='/detective-avatar.png'", script)
+        self.assertIn("--message-delay", script)
+        self.assertIn("DETECTIVE_MESSAGE_GAP_MS=650", script)
+        self.assertIn("function playDetectiveMessageSequence()", script)
+        self.assertIn("void signalList.offsetWidth", script)
         self.assertNotIn("activeCheckController", script)
         self.assertIn("isAnalyzing=false", script)
-        self.assertNotIn("startScanAnimation", script)
-        self.assertNotIn("stopScanAnimation", script)
-        self.assertNotIn("processingFrame", script)
+        self.assertIn("function startProcessingFrame()", script)
+        self.assertIn("function stopProcessingFrame()", script)
+        self.assertIn("function waitForMinimumScan(startedAt)", script)
+        self.assertIn("MINIMUM_SCAN_TIME_MS=1400", script)
+        self.assertIn("startProcessingFrame();", script)
+        self.assertIn("await waitForMinimumScan(scanStartedAt)", script)
         self.assertNotIn("resultBackButton", script)
         self.assertNotIn("cancelCheckButton", script)
         self.assertIn("historyReturnButton.hidden=!fromHistory", script)
@@ -142,17 +161,48 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("result?.character_message", script)
         self.assertNotIn("history-result-review", script)
         self.assertNotIn("historyList.innerHTML", script)
-        self.assertNotIn(".processing-frame", styles)
-        self.assertNotIn("@keyframes scan", styles)
+        self.assertIn(".processing-frame", styles)
+        self.assertIn("@keyframes scan-beam-move", styles)
+        self.assertIn("@keyframes scan-progress-move", styles)
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
         self.assertIn('"/offline-analyzer.js"', service_worker)
-        self.assertIn('CACHE_NAME="scamcheck-shell-v9"', service_worker)
+        self.assertIn('"/detective-avatar.png"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v13"', service_worker)
+        self.assertIn('new Set(["/","/styles.css","/app.js"])', service_worker)
+        self.assertIn("if(!NETWORK_FIRST_PATHS.has(cacheKey))", service_worker)
         self.assertIn("fetch(request)", service_worker)
         self.assertIn("const cacheKey=url.pathname", service_worker)
         self.assertIn("event.waitUntil(refresh.then(", service_worker)
         self.assertNotIn("/analyze", service_worker)
         self.assertNotIn("/session/ai-calls", service_worker)
+
+    def test_scan_frame_wraps_the_pending_analysis_request(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        page = (root / "frontend" / "index.html").read_text(encoding="utf-8")
+        script = (root / "frontend" / "app.js").read_text(encoding="utf-8")
+        styles = (root / "frontend" / "styles.css").read_text(encoding="utf-8")
+
+        run_analysis = script[
+            script.index("async function runAnalysis(submittedText)") :
+            script.index("function createLibraryIcon(")
+        ]
+        self.assertLess(
+            run_analysis.index("startProcessingFrame();"),
+            run_analysis.index('payload=await requestJson("/analyze"'),
+        )
+        self.assertLess(
+            run_analysis.index('payload=await requestJson("/analyze"'),
+            run_analysis.index("await waitForMinimumScan(scanStartedAt)"),
+        )
+        self.assertLess(
+            run_analysis.index("await waitForMinimumScan(scanStartedAt)"),
+            run_analysis.index("showResultFrame(submittedText,payload)"),
+        )
+        self.assertIn("stopProcessingFrame();\n    inputFrame.style.display='block'", run_analysis)
+        self.assertIn('id="processing-frame"', page)
+        self.assertIn("hidden", page[page.index('id="processing-frame"') :][:180])
+        self.assertIn("animation:scan-beam-move 2.15s", styles)
 
     def test_styles_include_widescreen_layout_without_replacing_mobile_defaults(
         self,
@@ -174,6 +224,12 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn(".history-result-review", styles)
         self.assertIn(".history-status.dangerous", styles)
         self.assertIn("grid-template-columns:repeat(3,minmax(0,1fr))", styles)
+        self.assertIn("@keyframes detective-message-in", styles)
+        self.assertIn("animation-delay:var(--message-delay)", styles)
+        self.assertNotIn("var(--message-order) *", styles)
+        self.assertIn(".result-frame .detective-message-row{opacity:1!important", styles)
+        self.assertIn(".detective-message-row.summary-message", styles)
+        self.assertIn(".action-section.psychology-hidden{grid-template-columns:1fr}", styles)
         self.assertIn(
             ".sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))",
             styles,
