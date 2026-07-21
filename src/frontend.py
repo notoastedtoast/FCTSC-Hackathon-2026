@@ -82,6 +82,16 @@ async def frontend_app() -> FileResponse:
     return frontend_file("app.js")
 
 
+@router.get("/app-data.js", include_in_schema=False)
+async def frontend_app_data() -> FileResponse:
+    return frontend_file("app-data.js")
+
+
+@router.get("/app-render.js", include_in_schema=False)
+async def frontend_app_render() -> FileResponse:
+    return frontend_file("app-render.js")
+
+
 @router.get("/service-worker.js", include_in_schema=False)
 async def frontend_service_worker() -> FileResponse:
     return FileResponse(

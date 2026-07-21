@@ -1,8 +1,8 @@
 /* Offline shell cache for the authored frontend assets only.
    API requests and user data are intentionally never cached here. */
-const CACHE_NAME="scamcheck-shell-v18";
-const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app.js","/scamcheck-logo.png","/detective-avatar.png","/psychologist-avatar.png"];
-const NETWORK_FIRST_PATHS=new Set(["/","/styles.css","/app.js"]);
+const CACHE_NAME="scamcheck-shell-v19";
+const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app-data.js","/app-render.js","/app.js","/scamcheck-logo.png","/detective-avatar.png","/psychologist-avatar.png"];
+const NETWORK_FIRST_PATHS=new Set(["/","/styles.css","/app-data.js","/app-render.js","/app.js"]);
 
 self.addEventListener("install",event=>{
   event.waitUntil(

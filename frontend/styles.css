@@ -54,7 +54,7 @@ a{color:inherit}
 .page-view{max-width:1180px;margin:0 auto;padding:34px 18px 50px;outline:none}
 .page-heading{max-width:760px;margin:0 0 24px}
 .page-heading-row{max-width:none;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
-.eyebrow,.section-kicker,.tool-label,.practice-eyebrow{margin:0 0 5px;color:var(--blue-dark);font-size:.76rem;font-weight:850;letter-spacing:.09em;text-transform:uppercase}
+.eyebrow,.tool-label,.practice-eyebrow{margin:0 0 5px;color:var(--blue-dark);font-size:.76rem;font-weight:850;letter-spacing:.09em;text-transform:uppercase}
 .page-heading h1,.result-header h1{margin:0;color:var(--navy);font-size:clamp(1.72rem,4vw,2.35rem);line-height:1.12;letter-spacing:-.035em}
 .page-heading>p:last-child,.page-heading>div>p:last-child{max-width:720px;margin:10px 0 0;color:var(--muted);font-size:1rem}
 .local-badge{display:inline-flex;align-items:center;margin-bottom:4px;padding:8px 12px;white-space:nowrap;color:var(--success);background:var(--success-soft);border:1px solid #b9dfc9;border-radius:999px;font-size:.78rem;font-weight:800}
@@ -87,7 +87,6 @@ a{color:inherit}
 .feedback{display:none;margin:10px 0 0;padding:10px 12px;border-radius:var(--radius-sm);font-size:.88rem;font-weight:680}
 .feedback.error{display:block;color:var(--danger);background:var(--danger-soft);border:1px solid #efbcbc}
 .feedback.info{display:block;color:var(--blue-dark);background:var(--blue-pale);border:1px solid #bed9f3}
-.feedback.warning{display:block;color:var(--warning);background:var(--warning-soft);border:1px solid #ead194}
 
 .primary-button,.practice-next-button,.history-delete-button,.delete-modal-button,.history-review-button,.history-reuse-button,.history-return-button{display:inline-flex;align-items:center;justify-content:center;border-radius:12px;font-weight:800;cursor:pointer;transition:transform .12s ease,box-shadow .16s ease,background .16s ease,border-color .16s ease}
 .primary-button{width:100%;min-height:56px;gap:9px;margin-top:16px;padding:13px 18px;color:#fff;background:linear-gradient(135deg,var(--blue-dark),var(--blue));border:0;box-shadow:0 9px 20px rgba(23,105,194,.2)}
