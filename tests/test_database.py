@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, cast
 import unittest
 from unittest.mock import patch
@@ -15,9 +17,19 @@ from tests.factories import scenario_assessments
 
 
 class AnalysisRepositoryTests(unittest.IsolatedAsyncioTestCase):
-    def test_runtime_repository_rejects_non_postgresql_storage(self) -> None:
+    async def test_runtime_repository_accepts_file_backed_sqlite(self) -> None:
+        with TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "scamcheck.db"
+            repository = AnalysisRepository(f"sqlite:///{database_path.as_posix()}")
+
+            await repository.initialize()
+
+            self.assertTrue(database_path.is_file())
+            repository.close()
+
+    def test_runtime_repository_rejects_unsupported_database_scheme(self) -> None:
         with self.assertRaises(DatabaseError):
-            AnalysisRepository("app.db")
+            AnalysisRepository("mysql://test:test@localhost/scamcheck")
 
     def test_postgresql_connections_disable_prepared_statements(self) -> None:
         database_url = "postgresql://test:test@localhost:5432/scamcheck"

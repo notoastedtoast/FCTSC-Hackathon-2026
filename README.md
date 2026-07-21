@@ -1,12 +1,12 @@
 # ScamCheck
 
 ScamCheck is a Vietnamese scam-message checker built with FastAPI, Pydantic,
-PostgreSQL/Supabase, Psycopg, HTTPX, and a plain HTML/CSS/JavaScript frontend.
+SQLite or PostgreSQL/Supabase, Psycopg, HTTPX, and a plain HTML/CSS/JavaScript frontend.
 
 An online check uses one idempotent `POST /analyze` request. The server tries Gemini
 primary, Gemini secondary, then Groq when configured; validates the structured result;
 optionally generates a short Cô tâm lý response; and commits the result, audit record,
-and replayable history data to PostgreSQL. Deterministic URL/text findings are advisory
+and replayable history data to the configured database. Deterministic URL/text findings are advisory
 evidence only and never override the provider's risk level.
 
 When the browser is offline, a conservative rules engine runs locally. Offline results
@@ -27,12 +27,14 @@ Copy `.env.example` to `.env`, then set:
 - `GOOGLE_API_KEY` (or legacy `GEMINI_API_KEY`)
 - `GOOGLE_MODEL` and `GOOGLE_FALLBACK_MODEL` if overriding defaults
 - optional `GROQ_API_KEY` and `GROQ_MODEL`
-- `DATABASE_URL` using the Supabase PostgreSQL transaction-pooler URL
+- optional `DATABASE_URL`; when omitted, local SQLite at `sqlite:///app.db` is used
 - optional `AI_SESSION_CALL_LIMIT` (default: 10)
 
-Passwords containing reserved URL characters must be URL-encoded in `DATABASE_URL`.
+For a shared production deployment, set `DATABASE_URL` to a Supabase PostgreSQL
+transaction-pooler URL. Passwords containing reserved URL characters must be URL-encoded.
 PostgreSQL stores `TIMESTAMPTZ` values as absolute instants; the history UI displays them
-in Vietnam time (`Asia/Ho_Chi_Minh`, UTC+7).
+in Vietnam time (`Asia/Ho_Chi_Minh`, UTC+7). Local SQLite is intended for a single app
+process; do not use it when multiple server instances must share history or quota state.
 
 ## Run and verify
 
@@ -49,7 +51,7 @@ The online suite uses real credentials and may consume provider quota.
 
 ## Main API
 
-- `GET /health` — process health without calling AI or PostgreSQL.
+- `GET /health` — process health without calling AI or the database.
 - `POST /analyze` — structured Detective result, optional Cô tâm lý response,
   deterministic supporting findings, and session usage. Send a stable
   `X-ScamCheck-Request-ID` when retrying.
@@ -61,8 +63,8 @@ The online suite uses real credentials and may consume provider quota.
 - `GET /openapi.json` — authoritative generated schema.
 
 The session cookie groups quota, audit, and history records; it is not user
-authentication. Submitted messages are untrusted model data and are stored in
-PostgreSQL, so users should not submit passwords, OTPs, card numbers, or other secrets.
+authentication. Submitted messages are untrusted model data and are stored in the
+configured database, so users should not submit passwords, OTPs, card numbers, or other secrets.
 
 ## Folder structure
 
@@ -73,10 +75,12 @@ frontend/
   offline-analyzer.js     Browser-only preliminary rules engine
   service-worker.js       Shell-assets-only offline cache
   styles.css              Responsive UI styles
+  detective-avatar.png    Detective analysis avatar
+  psychologist-avatar.png Cô tâm lý response avatar
 src/
   main.py                 FastAPI composition, sessions, quota, routes, idempotency
   analyzer.py             Gemini/Groq fallback chain and structured validation
-  database.py             PostgreSQL persistence and in-memory test backend
+  database.py             SQLite/PostgreSQL persistence and migrations
   schemas.py              Public Pydantic request/response contracts
   deterministic_checker.py Advisory text/domain signals
   url_extractor.py        Bounded URL extraction support

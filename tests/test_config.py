@@ -5,6 +5,7 @@ from unittest.mock import patch
 from src.config import (
     ConfigurationError,
     DEFAULT_AI_SESSION_CALL_LIMIT,
+    DEFAULT_DATABASE_URL,
     DEFAULT_GOOGLE_FALLBACK_MODEL,
     DEFAULT_GOOGLE_MODEL,
     DEFAULT_GROQ_MODEL,
@@ -14,6 +15,19 @@ from src.config import (
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_settings_default_to_local_sqlite_when_database_is_unset(self) -> None:
+        with (
+            patch("src.config.load_dotenv"),
+            patch.dict(
+                os.environ,
+                {"GOOGLE_API_KEY": "test-key"},
+                clear=True,
+            ),
+        ):
+            settings = load_settings()
+
+        self.assertEqual(settings.database_url, DEFAULT_DATABASE_URL)
+
     def test_session_call_limit_defaults_and_accepts_positive_override(self) -> None:
         base_environment = {
             "GOOGLE_API_KEY": "test-key",
@@ -60,7 +74,7 @@ class ConfigurationTests(unittest.TestCase):
                     with self.assertRaises(ConfigurationError):
                         load_settings()
 
-    def test_database_url_accepts_supabase_alias_and_rejects_other_schemes(self) -> None:
+    def test_database_url_accepts_postgresql_sqlite_and_local_default(self) -> None:
         with (
             patch("src.config.load_dotenv"),
             patch.dict(
@@ -73,14 +87,27 @@ class ConfigurationTests(unittest.TestCase):
 
         self.assertEqual(database_url, "postgres://test:test@localhost/postgres")
 
-        for environment in ({}, {"DATABASE_URL": "sqlite:///app.db"}):
+        for environment, expected in (
+            ({}, DEFAULT_DATABASE_URL),
+            ({"DATABASE_URL": "sqlite:///custom.db"}, "sqlite:///custom.db"),
+        ):
             with self.subTest(environment=environment):
                 with (
                     patch("src.config.load_dotenv"),
                     patch.dict(os.environ, environment, clear=True),
                 ):
-                    with self.assertRaises(ConfigurationError):
-                        load_database_url()
+                    self.assertEqual(load_database_url(), expected)
+
+        with (
+            patch("src.config.load_dotenv"),
+            patch.dict(
+                os.environ,
+                {"DATABASE_URL": "mysql://test:test@localhost/scamcheck"},
+                clear=True,
+            ),
+        ):
+            with self.assertRaises(ConfigurationError):
+                load_database_url()
 
     def test_model_uses_documented_default(self) -> None:
         with (

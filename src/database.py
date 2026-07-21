@@ -1,4 +1,4 @@
-"""PostgreSQL persistence with an embedded test-only repository."""
+"""PostgreSQL and SQLite persistence for ScamCheck."""
 
 import asyncio
 from contextlib import closing, nullcontext
@@ -48,8 +48,8 @@ class DatabaseError(RuntimeError):
     """Raised when an analysis cannot be persisted."""
 
 
-class _SqliteTestRepository:
-    """Embedded repository retained only for deterministic offline tests."""
+class _SqliteRepository:
+    """Embedded repository for local runtime and deterministic offline tests."""
 
     def __init__(self, database_path: str | Path) -> None:
         self._is_in_memory: bool = str(database_path) == ":memory:"
@@ -1148,18 +1148,23 @@ class _PostgresRepository:
 
 
 class AnalysisRepository:
-    """Select PostgreSQL at runtime and an embedded backend only for `:memory:` tests."""
+    """Select PostgreSQL or SQLite from the configured database URL."""
 
     def __init__(self, database_url: str | Path) -> None:
         value = str(database_url)
-        if value == ":memory:":
-            self._backend: _PostgresRepository | _SqliteTestRepository = (
-                _SqliteTestRepository(value)
+        if value.startswith("sqlite:///"):
+            sqlite_path = value.removeprefix("sqlite:///")
+            if not sqlite_path:
+                raise DatabaseError("SQLite database path must not be empty")
+            self._backend: _PostgresRepository | _SqliteRepository = (
+                _SqliteRepository(sqlite_path)
             )
+        elif value == ":memory:" or "://" not in value:
+            self._backend = _SqliteRepository(value)
         elif value.startswith(("postgresql://", "postgres://")):
             self._backend = _PostgresRepository(value)
         else:
-            raise DatabaseError("Database URL must use PostgreSQL")
+            raise DatabaseError("Database URL must use PostgreSQL or SQLite")
 
     async def initialize(self) -> None:
         await self._backend.initialize()
@@ -1227,7 +1232,7 @@ class AnalysisRepository:
 
     def _connect(self) -> sqlite3.Connection:
         """Expose only the embedded test connection to legacy-schema tests."""
-        if not isinstance(self._backend, _SqliteTestRepository):
+        if not isinstance(self._backend, _SqliteRepository):
             raise RuntimeError("Raw connections are unavailable for PostgreSQL runtime use")
         return self._backend.connect_for_tests()
 

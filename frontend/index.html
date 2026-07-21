@@ -107,6 +107,22 @@
         </div>
       </section>
 
+      <section id="processing-frame" class="processing-frame" role="status" aria-live="polite" hidden>
+        <div class="processing-panel">
+          <p class="eyebrow">Đang kiểm tra tin nhắn</p>
+          <div class="processing-visual" aria-hidden="true">
+            <span class="analysis-scan-ring"></span>
+            <img src="./detective-avatar.png" alt="" width="92" height="92">
+          </div>
+          <h1>Thám tử đang phân tích</h1>
+          <p>ScamCheck đang đối chiếu ngữ cảnh, dấu hiệu gây áp lực và yêu cầu nhạy cảm.</p>
+          <span class="analysis-progress-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <div class="processing-steps" aria-hidden="true">
+            <span>Đọc ngữ cảnh</span><span>Tìm dấu hiệu</span><span>Chuẩn bị kết quả</span>
+          </div>
+        </div>
+      </section>
+
       <section id="result-frame" class="result-frame" aria-live="polite">
         <header class="result-header">
           <div><p id="result-context-label" class="eyebrow">Phân tích hoàn tất</p><h1>Kết quả kiểm tra</h1></div>
@@ -130,31 +146,26 @@
             </div>
             <div id="signal-list" class="signal-list detective-message-list"></div>
           </section>
-
-          <section class="result-section">
-            <p class="section-kicker">Nội dung đã gửi</p>
-            <h2>Tin nhắn gốc</h2>
-            <div id="original-message" class="original-message"></div>
-            <p id="highlight-note" class="highlight-note">Vùng tô màu là nội dung cần đặc biệt chú ý.</p>
-          </section>
         </div>
 
-        <section id="action-section" class="result-section action-section">
+        <section id="action-section" class="result-section action-section" hidden>
           <div id="psychology-block" class="psychology-block">
-            <div id="psychology-title" class="role-label psychology-label">Cô tâm lý</div>
-            <p id="psychology-message" class="psychology-message"></p>
-          </div>
-          <div>
-            <p class="section-kicker">Bước tiếp theo</p>
-            <h2>Ba hành động nên làm ngay</h2>
-            <div id="recommendations" class="recommendations">
-              <div class="recommendation"><span class="recommendation-number">1</span><span>Không bấm vào đường dẫn trong tin nhắn.</span></div>
-              <div class="recommendation"><span class="recommendation-number">2</span><span>Không cung cấp mật khẩu hoặc mã OTP.</span></div>
-              <div class="recommendation"><span class="recommendation-number">3</span><span>Liên hệ tổ chức qua số điện thoại hoặc ứng dụng chính thức.</span></div>
+            <div class="psychology-profile">
+              <img class="psychology-avatar" src="./psychologist-avatar.png" alt="" width="68" height="68">
+              <div>
+                <div id="psychology-title" class="role-label psychology-label">Cô tâm lý</div>
+                <h2>Lời nhắn giúp bác bình tâm</h2>
+                <p class="psychology-status"><span aria-hidden="true"></span>Đồng hành an toàn</p>
+              </div>
             </div>
+            <div id="psychology-message" class="psychology-message-list"></div>
           </div>
         </section>
       </section>
+
+      <button id="result-scroll-button" class="result-scroll-button" type="button" aria-label="Cuộn đến tin nhắn mới nhất" title="Tin nhắn mới" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
     </main>
 
     <main id="library-view" class="page-view library-view" data-view-panel="library" tabindex="-1" hidden>

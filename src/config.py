@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 
 DEFAULT_AI_SESSION_CALL_LIMIT: Final[int] = 10
+DEFAULT_DATABASE_URL: Final[str] = "sqlite:///app.db"
 DEFAULT_GOOGLE_MODEL: Final[str] = "gemini-3.5-flash"
 DEFAULT_GOOGLE_FALLBACK_MODEL: Final[str] = "gemini-3.1-flash-lite"
 DEFAULT_GROQ_MODEL: Final[str] = "openai/gpt-oss-20b"
@@ -29,15 +30,17 @@ class Settings:
 
 
 def load_database_url() -> str:
-    """Load and validate the server-side PostgreSQL connection string."""
+    """Load the configured database URL or use a local SQLite database."""
     load_dotenv()
-    database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
-    if not database_url:
+    database_url = (
+        os.getenv("DATABASE_URL")
+        or os.getenv("SUPABASE_DB_URL")
+        or DEFAULT_DATABASE_URL
+    )
+    if not database_url.startswith(("postgresql://", "postgres://", "sqlite:///")):
         raise ConfigurationError(
-            "Missing required configuration: DATABASE_URL (or SUPABASE_DB_URL)."
+            "DATABASE_URL must be a PostgreSQL or SQLite connection string"
         )
-    if not database_url.startswith(("postgresql://", "postgres://")):
-        raise ConfigurationError("DATABASE_URL must be a PostgreSQL connection string")
     return database_url
 
 

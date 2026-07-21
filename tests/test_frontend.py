@@ -33,6 +33,7 @@ class FrontendTests(unittest.TestCase):
 
         self.assertTrue((frontend / "scamcheck-logo.png").is_file())
         self.assertTrue((frontend / "detective-avatar.png").is_file())
+        self.assertTrue((frontend / "psychologist-avatar.png").is_file())
         self.assertIn('href="./styles.css"', page)
         self.assertIn('src="./app.js"', page)
         self.assertIn('src="./offline-analyzer.js"', page)
@@ -41,13 +42,15 @@ class FrontendTests(unittest.TestCase):
         self.assertIn(":root", styles)
         self.assertIn('id="detective-title"', page)
         self.assertIn('src="./detective-avatar.png"', page)
+        self.assertIn('src="./psychologist-avatar.png"', page)
         self.assertIn('class="signal-list detective-message-list"', page)
         self.assertIn('id="psychology-title"', page)
         self.assertIn('id="psychology-block"', page)
         self.assertIn('id="action-section"', page)
         self.assertIn('id="psychology-message"', page)
         self.assertIn('id="result-context-label"', page)
-        self.assertIn('id="highlight-note"', page)
+        self.assertIn('id="result-scroll-button"', page)
+        self.assertIn('aria-label="Cuộn đến tin nhắn mới nhất"', page)
         self.assertIn('id="practice-title"', page)
         self.assertIn('id="practice-message"', page)
         self.assertIn('id="connectivity-status"', page)
@@ -82,7 +85,7 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn("character-chat", page)
         self.assertNotIn('id="history-overlay"', page)
         self.assertNotIn('id="history-button"', page)
-        self.assertNotIn('id="processing-frame"', page)
+        self.assertIn('id="processing-frame"', page)
         self.assertNotIn('id="cancel-check-button"', page)
         self.assertNotIn('id="result-back-button"', page)
         self.assertIn('id="history-return-button"', page)
@@ -105,22 +108,49 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("statusCode===429", script)
         self.assertIn("payload.character_notice", script)
         self.assertIn("riskLevel==='suspicious'||riskLevel==='dangerous'", script)
-        self.assertIn("psychologyBlock.hidden=!shouldShow", script)
-        self.assertIn("classList.toggle('psychology-hidden',!shouldShow)", script)
+        self.assertIn("psychologyBlock.hidden=true", script)
+        self.assertIn("actionSection.hidden=true", script)
+        self.assertIn("actionSection.hidden=false", script)
         self.assertIn("voiceButton.setAttribute('aria-pressed','true')", script)
         self.assertIn("detective.indicator_evidence", script)
         self.assertIn("detective.actions", script)
         self.assertIn("detective.risk_level==='suspicious'||detective.risk_level==='dangerous'", script)
-        self.assertIn("highlightNote.hidden=!shouldHighlight||excerpts.length===0", script)
+        self.assertIn("note.hidden=!shouldHighlight||excerpts.length===0", script)
         self.assertIn("row.className=`detective-message-row", script)
         self.assertIn("avatar.src='/detective-avatar.png'", script)
+        self.assertIn("function appendOriginalMessageCard(text,excerpts,shouldHighlight)", script)
+        self.assertIn("appendOriginalMessageCard(originalText,excerpts,shouldHighlight)", script)
+        self.assertIn("function renderRecommendations(actions)", script)
+        self.assertIn("renderRecommendations(detective.actions||[])", script)
+        self.assertNotIn("document.getElementById('recommendations')", script)
+        append_signal = script[
+            script.index("function appendSignalCard(") :
+            script.index("function appendOriginalMessageCard(")
+        ]
+        self.assertIn("return card;", append_signal)
+        self.assertNotIn("document.getElementById('original-message')", script)
         self.assertIn("--message-delay", script)
         self.assertIn("DETECTIVE_MESSAGE_GAP_MS=650", script)
-        self.assertIn("function playDetectiveMessageSequence()", script)
+        self.assertIn("function playMessageSequence()", script)
+        self.assertIn("function revealPsychologyMessages()", script)
+        self.assertIn("function scrollToResultMessage(message,{force=false}={})", script)
+        self.assertIn("function pauseResultAutoFollow()", script)
+        self.assertIn("function resumeResultAutoFollow()", script)
+        self.assertIn("function handleResultWindowScroll()", script)
+        self.assertIn("message.scrollIntoView({", script)
+        self.assertIn("resultFrame.addEventListener('animationstart'", script)
+        self.assertIn("window.addEventListener('wheel'", script)
+        self.assertIn("window.addEventListener('touchmove'", script)
+        self.assertIn("psychologySequenceTimer=window.setTimeout", script)
+        self.assertIn("function splitPsychologyMessage(message)", script)
+        self.assertIn("function appendPsychologyMessage(message,index)", script)
+        self.assertIn("avatar.src='/psychologist-avatar.png'", script)
+        self.assertIn("const emojis=['🫶','🌿','🛡️']", script)
         self.assertIn("void signalList.offsetWidth", script)
         self.assertNotIn("activeCheckController", script)
         self.assertIn("isAnalyzing=false", script)
-        self.assertNotIn("startProcessingFrame", script)
+        self.assertIn("function showProcessingFrame()", script)
+        self.assertIn("function hideProcessingFrame()", script)
         self.assertNotIn("waitForMinimumScan", script)
         self.assertNotIn("resultBackButton", script)
         self.assertNotIn("cancelCheckButton", script)
@@ -160,12 +190,20 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("localStorage.setItem(OFFLINE_HISTORY_KEY", script)
         self.assertNotIn("history-result-review", script)
         self.assertNotIn("historyList.innerHTML", script)
-        self.assertNotIn(".processing-frame", styles)
+        self.assertIn(".processing-frame", styles)
+        self.assertIn(".processing-panel", styles)
+        self.assertIn(".result-scroll-button{position:fixed", styles)
+        self.assertIn("@keyframes result-scroll-button-in", styles)
+        self.assertIn("@keyframes analysis-scan-spin", styles)
+        self.assertIn(".psychology-avatar", styles)
+        self.assertIn(".psychology-message-row", styles)
+        self.assertIn(".psychology-block.message-sequence-playing", styles)
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
         self.assertIn('"/offline-analyzer.js"', service_worker)
         self.assertIn('"/detective-avatar.png"', service_worker)
-        self.assertIn('CACHE_NAME="scamcheck-shell-v16"', service_worker)
+        self.assertIn('"/psychologist-avatar.png"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v17"', service_worker)
         self.assertIn('new Set(["/","/styles.css","/app.js"])', service_worker)
         self.assertIn("if(!NETWORK_FIRST_PATHS.has(cacheKey))", service_worker)
         self.assertIn("fetch(request)", service_worker)
@@ -174,7 +212,24 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn("/analyze", service_worker)
         self.assertNotIn("/session/ai-calls", service_worker)
 
-    def test_composer_remains_visible_while_analysis_is_pending(self) -> None:
+        render_signals = script[
+            script.index("function renderSignals(") :
+            script.index("function renderRecommendations(")
+        ]
+        self.assertLess(
+            render_signals.index("appendSignalCard("),
+            render_signals.index("appendOriginalMessageCard("),
+        )
+        self.assertLess(
+            render_signals.index("appendOriginalMessageCard("),
+            render_signals.index("const evidence="),
+        )
+        self.assertLess(
+            render_signals.index("renderDeterministicFindings("),
+            render_signals.index("renderRecommendations("),
+        )
+
+    def test_analysis_uses_a_separate_processing_frame(self) -> None:
         root = Path(__file__).resolve().parent.parent
         page = (root / "frontend" / "index.html").read_text(encoding="utf-8")
         script = (root / "frontend" / "app.js").read_text(encoding="utf-8")
@@ -186,8 +241,10 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("isAnalyzing=true", run_analysis)
         self.assertIn("updateInputState();", run_analysis)
         self.assertNotIn("inputFrame.style.display='none'", run_analysis)
-        self.assertNotIn("processingFrame", run_analysis)
-        self.assertNotIn('id="processing-frame"', page)
+        self.assertIn("showProcessingFrame()", run_analysis)
+        self.assertIn("hideProcessingFrame()", run_analysis)
+        self.assertIn('id="processing-frame"', page)
+        self.assertIn("inputFrame.style.display='none'", script)
 
     def test_styles_include_widescreen_layout_without_replacing_mobile_defaults(
         self,
@@ -212,9 +269,9 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("@keyframes detective-message-in", styles)
         self.assertIn("animation-delay:var(--message-delay)", styles)
         self.assertNotIn("var(--message-order) *", styles)
-        self.assertIn(".result-frame .detective-message-row{opacity:1!important", styles)
+        self.assertIn(".result-frame .detective-message-row,.psychology-block .psychology-message-row{opacity:1!important", styles)
         self.assertIn(".detective-message-row.summary-message", styles)
-        self.assertIn(".action-section.psychology-hidden{grid-template-columns:1fr}", styles)
+        self.assertIn(".action-section{display:block}", styles)
         self.assertIn(
             ".sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))",
             styles,

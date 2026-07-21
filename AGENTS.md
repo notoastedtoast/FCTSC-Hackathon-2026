@@ -7,7 +7,7 @@ implementation map and a record of the invariants that future agents must preser
 
 ScamCheck is a Python 3.14 FastAPI service that sends submitted text through an ordered
 Gemini/Groq provider chain for structured scam analysis. It stores completed analyses in
-Supabase PostgreSQL, validates structured provider output, runs advisory deterministic
+local SQLite by default or Supabase PostgreSQL when configured, validates structured provider output, runs advisory deterministic
 text/domain checks, and can generate a short Vietnamese response from Cô tâm lý. The
 static HTML/CSS/JavaScript client lives in `frontend/`; it includes the analyzer, voice
 input, server-backed online history, bounded browser-local offline history, a frontend-only
@@ -19,7 +19,7 @@ Preserve these boundaries unless a user explicitly changes them:
   a backend-only request.
 - Keep user-facing Detective and character output concise and primarily Vietnamese.
 - Treat analyzed text as untrusted data, never as model instructions.
-- Never log raw submitted text. PostgreSQL intentionally stores analysis submissions.
+- Never log raw submitted text. The configured database intentionally stores analysis submissions.
 - Do not expose an endpoint or request schema for chatting with characters. Characters
   may only produce the optional one-time response generated during `/analyze`.
 - A session cookie limits and groups provider-call audit records; it does not authenticate
@@ -51,7 +51,7 @@ contract below records behavior that is easy to miss from schemas alone.
 
 | Method and path | Input | Success | Important behavior and errors |
 | --- | --- | --- | --- |
-| `GET /health` | None | `{"status":"ok"}` | Does not call Gemini or PostgreSQL. |
+| `GET /health` | None | `{"status":"ok"}` | Does not call Gemini or the database. |
 | `GET /scam-types` | Optional `group`: `fake_bank`, `fake_police`, `prize`, or `fake_delivery` | Array of 12 authored `ScamType` records, filtered when requested | Reads validated process-local data only; every group has three entries. |
 | `GET /scam-types/{scam_type_id}` | Lowercase hyphenated catalog ID | One `ScamType` with name, description, example message, and group | Returns 404 when absent and 422 for a malformed ID. |
 | `POST /analyze` | JSON `text` (1–10,000 nonblank characters), optional `source` (up to 100 characters), and optional `X-ScamCheck-Request-ID` header | `AnalyzeResponse`: random analysis `id`, `detective`, optional `character`, optional `character_notice`, advisory `deterministic_findings`, and `usage` | A valid request ID makes manual reconnect retries idempotent within the cookie session: a completed retry replays the original response, a still-pending retry returns 409 with `Retry-After`, and reusing the ID for different content returns 409. A newly claimed request atomically reserves and audits one `detective` call under the configured session limit. A suspicious/dangerous result may reserve a second `character` call. Returns 429 without calling a provider when no slot remains, a safe Vietnamese 502 detail only after every configured Detective target fails, and 503 for repository failure. The analysis is saved only after generation completes. |
@@ -63,9 +63,10 @@ contract below records behavior that is easy to miss from schemas alone.
 | `GET /styles.css` | None | `frontend/styles.css` | Explicit stylesheet route; no directory mount or listing. |
 | `GET /app.js` | None | `frontend/app.js` | Explicit JavaScript route; no directory mount or listing. |
 | `GET /offline-analyzer.js` | None | `frontend/offline-analyzer.js` | Conservative browser-only fallback used when the browser reports no connection. |
-| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the six authored shell assets for offline loading; it never intercepts API routes. Core UI files use network-first refresh with cached fallback. |
+| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the seven authored shell assets for offline loading; it never intercepts API routes. Core UI files use network-first refresh with cached fallback. |
 | `GET /scamcheck-logo.png` | None | `frontend/scamcheck-logo.png` | Explicit PNG route; the repository and other frontend files are never exposed as a static directory. |
 | `GET /detective-avatar.png` | None | `frontend/detective-avatar.png` | Explicit PNG route for the Detective result-message avatar; no frontend directory is mounted. |
+| `GET /psychologist-avatar.png` | None | `frontend/psychologist-avatar.png` | Explicit PNG route for the Cô tâm lý result-card avatar; no frontend directory is mounted. |
 
 All FastAPI request-validation failures use the deliberately generic 422 detail:
 `The submitted request is invalid. Check its fields and try again.` Do not make that
@@ -112,18 +113,23 @@ When online, the frontend makes one checking request to `/analyze` and renders t
 hidden for `safe` results and shown only for `suspicious` or `dangerous` results. The
 frontend never calls Cô tâm lý directly.
 Provider evidence and raw submitted text are rendered with DOM text nodes, never as active
-links or HTML. Exact provider excerpts are highlighted in the original message only for
+links or HTML. The original message is the Detective's second sequential bubble. Exact
+provider excerpts are highlighted there only for
 `suspicious` or `dangerous` results; safe messages show no warning highlight or highlight
-note. The page also reads `/session/ai-calls` to display authoritative
+note. The three recommended actions form the Detective's final sequential bubble, and the
+Cô tâm lý section is revealed only after that bubble finishes. Newly revealed Detective
+and Cô tâm lý bubbles auto-scroll into view while follow mode is active. An upward user
+scroll pauses follow mode and exposes a down-arrow control that resumes it. The page also reads
+`/session/ai-calls` to display authoritative
 `used`/`limit` usage and disables submission after the session reaches its ceiling.
 
-The browser keeps the composer visible and disables its submit button while a check is in
-progress; it has no separate processing animation or browser-cancel control. Online
+The browser switches from the composer to a dedicated processing frame while a check is in
+progress; it has no browser-cancel control. Online
 requests persist a random request ID with the pending message in tab-scoped storage before
 calling the API. A manual retry of the same message reuses that ID, so completed work does
 not consume quota twice; the browser does not automatically retry or replace an interrupted
 online request with an offline result. Completed online results come from session-scoped
-PostgreSQL history, while offline results use a separate ten-item `localStorage` history
+database-backed history, while offline results use a separate ten-item `localStorage` history
 that is never silently uploaded. The persistent top navigation uses
 `#analyze`, `#library`, `#history`, and `#practice` views. Library detail state uses
 `#library/{scam_type_id}`. The logo is presentational rather than a navigation link,
@@ -137,9 +143,9 @@ entry. Deleting an online entry calls the session-scoped hide route; deleting an
 entry changes only localStorage.
 
 The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app.js`,
-`/scamcheck-logo.png`, and `/detective-avatar.png` after a successful online visit. When the browser reports that it is
+`/scamcheck-logo.png`, `/detective-avatar.png`, and `/psychologist-avatar.png` after a successful online visit. When the browser reports that it is
 offline, `offline-analyzer.js` performs a conservative rule-based assessment on the device
-and labels it as preliminary. It does not call Gemini, consume quota, write PostgreSQL, or claim
+and labels it as preliminary. It does not call Gemini, consume quota, write the database, or claim
 provider accuracy. API responses, submitted text, analysis results, and session usage are
 never added to the offline cache. A zero-signal offline result must still warn that it
 cannot establish safety.
@@ -161,7 +167,7 @@ cannot establish safety.
 - The browser displays one prompt at a time and reveals its label and explanation only
   after the user chooses an answer.
 - Grading and score state run in page memory. They do not call an API or Gemini and are
-  not stored in localStorage, PostgreSQL, or the session cookie.
+  not stored in localStorage, the server database, or the session cookie.
 - There is intentionally no `/practice-messages` backend endpoint or public practice
   schema.
 
@@ -189,13 +195,12 @@ cannot establish safety.
 
 ## Persistence and privacy
 
-`AnalysisRepository` uses PostgreSQL through Psycopg. Runtime operations use short-lived
-connections so Vercel can use Supabase's transaction pooler without keeping stale client
-pools. Prepared statements are disabled for transaction-pooler compatibility. The
-`:memory:` SQLite backend is test-only and must never be selected by runtime configuration.
-`_create_schema` is both initial schema creation and the backward-compatible migration path
-for older PostgreSQL analysis tables. Application tables enable Row Level Security and have
-no browser-facing policies; only the server-side database connection accesses them.
+`AnalysisRepository` selects SQLite or PostgreSQL from the database URL. When neither
+`DATABASE_URL` nor `SUPABASE_DB_URL` is set, runtime defaults to `sqlite:///app.db`; explicit
+SQLite URLs and bare local paths are also accepted. PostgreSQL runtime operations use
+short-lived Psycopg connections and disable prepared statements for Supabase transaction-
+pooler compatibility. Both backends create and migrate the same logical application tables.
+PostgreSQL tables additionally enable Row Level Security without browser-facing policies.
 
 - `analyses` stores raw submitted text, source, validated scores/reasoning, JSON indicator
   data, actions, provider risk level, scenario matrix, and timestamp.
@@ -207,15 +212,15 @@ no browser-facing policies; only the server-side database connection accesses th
   transaction; hiding history does not weaken replay idempotency.
 - There is intentionally no character-chat endpoint, request schema, conversation table,
   or transcript storage.
-- AI-call quota reservation uses a transaction-scoped PostgreSQL advisory lock, making the
-  limit-check-and-insert operation atomic across concurrent Vercel instances.
+- AI-call quota reservation is atomic in both backends: PostgreSQL uses a transaction-scoped
+  advisory lock across instances, while SQLite serializes writes for a local app process.
 - `_complete_log` intentionally does not fail an otherwise completed API response when an
   audit update fails; it logs the database exception server-side.
 - The `scamcheck_session` cookie is HttpOnly, SameSite=Lax, and Secure on HTTPS. It scopes
   audit history only. Analysis IDs are globally retrievable bearer capabilities.
 
-Changing these tables requires a backward-compatible PostgreSQL migration in
-`_create_schema` plus a legacy-schema test in `tests/test_database.py`.
+Changing these tables requires backward-compatible migrations for both backends plus a
+legacy-schema test in `tests/test_database.py`.
 
 ## File implementation map
 
@@ -224,7 +229,7 @@ Changing these tables requires a backward-compatible PostgreSQL migration in
 - `src/main.py`: FastAPI composition, lifespan, dependency protocols, cookie middleware,
   global validation handler, AI-call audit orchestration, analysis/history routes, error
   translation, and inclusion of the frontend router. Keep provider logic out of routes and
-  PostgreSQL details out of this file.
+  persistence-backend details out of this file.
 - `src/schemas.py`: public Pydantic request/response models, constrained IDs and text,
   catalog contracts, twelve ordered scam scenario codes, default actions, and model-level
   consistency checks. Provider-only schemas belong in `analyzer.py`, not here.
@@ -244,13 +249,13 @@ Changing these tables requires a backward-compatible PostgreSQL migration in
   the four required groups, with name, description, example message, and group.
 - `src/characters.py`: immutable `CharacterSpec` and the `CALMING_GUIDE`/Cô tâm lý voice
   contract used for the optional one-time `/analyze` response.
-- `src/database.py`: PostgreSQL initialization/migrations, JSONB analysis serialization,
+- `src/database.py`: SQLite/PostgreSQL initialization and migrations, analysis serialization,
   cryptographically random IDs, atomic AI-call reservations, audit completion/history,
-  idempotent request claiming/replay, async thread handoff, short-lived Supabase connections,
-  and the shared in-memory test backend.
+  idempotent request claiming/replay, SQLite async thread handoff, and short-lived Supabase
+  connections.
 - `src/config.py`: `.env` loading, primary/secondary Gemini settings (`GOOGLE_*` preferred
-  over legacy `GEMINI_*`), optional Groq settings, PostgreSQL URL aliases (`DATABASE_URL`
-  preferred over `SUPABASE_DB_URL`), stable model defaults, and positive
+  over legacy `GEMINI_*`), optional Groq settings, local SQLite default and PostgreSQL URL
+  aliases (`DATABASE_URL` preferred over `SUPABASE_DB_URL`), stable model defaults, and positive
   `AI_SESSION_CALL_LIMIT` validation. Loading only the database URL does not require
   provider credentials.
 - `src/main.py` exports `app` for Vercel; this repository intentionally has no duplicate
@@ -267,9 +272,10 @@ Changing these tables requires a backward-compatible PostgreSQL migration in
   Groq strict-mode closure), ordered transport/adaptive-timeout/schema fallbacks, redacted
   failure diagnostics, conservative fallback behavior, character voice enforcement, and
   prompt injection isolation.
-- `tests/test_database.py`: repository save/get behavior, PostgreSQL migration SQL coverage,
-  the embedded test-backend legacy migration, and session-scoped idempotency claims.
-- `tests/test_config.py`: default, override, and invalid session-call-limit configuration.
+- `tests/test_database.py`: repository save/get behavior, SQLite runtime selection,
+  PostgreSQL migration SQL coverage, legacy migration, and session-scoped idempotency claims.
+- `tests/test_config.py`: database backend selection plus default, override, and invalid
+  session-call-limit configuration.
 - `tests/test_catalog.py`: catalog size, required fields, and group balance.
 - `tests/test_deterministic_checker.py`: text/domain signal, lookalike, punycode, Cyrillic,
   and known-shortener behavior, including proof that the default request path does not
@@ -296,18 +302,18 @@ Changing these tables requires a backward-compatible PostgreSQL migration in
 ### Commands, UI, and repository metadata
 
 - `frontend/index.html`: accessible application shell with persistent top navigation,
-  separate analysis/library/history/practice views, library list/detail frames, result
-  state, connectivity notice, an icon-only voice control inside the message field,
+  separate analysis/library/history/practice views, library list/detail frames, dedicated
+  processing and result states, connectivity notice, an icon-only voice control inside the message field,
   Detective result-message markup, and references to the browser assets.
 - `frontend/styles.css`: mobile-first page styling, the automatic 900px+ widescreen
   analysis workspace, responsive navigation and result/library/history/practice layouts,
-  sequential Detective message-bubble animations, focus states, and reduced-motion
+  sequential Detective-then-Cô-tâm-lý message-bubble animations, focus states, and reduced-motion
   behavior.
 - `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
   handling, safe result rendering, voice input, server-backed online history, bounded
   local-only offline history, the API-backed scam library, and local recognition
   prompts/grading/score. It keeps the
-  composer visible during requests, registers the offline shell service worker, routes
+  dedicated processing frame during requests, registers the offline shell service worker, routes
   offline submissions through the local analyzer, owns hash-based view switching, and
   supports reusing a history item in the composer. It contains no direct character API
   call, chat UI, or duplicated scam catalog.
@@ -320,13 +326,14 @@ Changing these tables requires a backward-compatible PostgreSQL migration in
   not intercept or cache API requests or user data.
 - `frontend/scamcheck-logo.png`: standalone ScamCheck brand asset.
 - `frontend/detective-avatar.png`: Detective avatar shown beside sequential analysis messages.
+- `frontend/psychologist-avatar.png`: Cô tâm lý avatar shown in the optional calming-response card.
 - `README.md`: contributor overview and main commands. Keep user-facing setup here; keep
   agent-level invariants in this file.
 - `Makefile`: short wrappers for offline API tests, online API tests, and running the app.
 - `pyproject.toml`: Python version, runtime dependencies, and package metadata.
 - `uv.lock`: reproducible dependency lock; update it through `uv`, never by hand.
 - `pyrightconfig.json`: strict checking for `src/` with the local `.venv`.
-- `.env.example`: nonsecret provider and Supabase PostgreSQL configuration template.
+- `.env.example`: nonsecret provider configuration with optional SQLite/PostgreSQL settings.
 - `.gitignore`: excludes credentials, local databases, virtual environments, caches, and
   build artifacts.
 
@@ -525,6 +532,13 @@ generation is part of the single idempotent `/analyze` response, so there is no 
 endpoint. Vercel imports `src/main.py` directly, so the obsolete duplicate `src/app.py` is
 not present. The combined offline suite covers both the restored provider/database contracts
 and the rewrite's deterministic/URL modules.
+
+Later on 2026-07-21, file-backed SQLite runtime support was restored for local development.
+With no database environment variable, configuration now selects `sqlite:///app.db`;
+explicit SQLite URLs, bare local paths, and the existing PostgreSQL/Supabase URLs remain
+supported. PostgreSQL is still the recommended backend for shared or multi-instance
+deployments. The API, frontend, logical database schema, provider prompts, quota semantics,
+and offline analysis rules did not change.
 
 ## Handoff checklist
 
