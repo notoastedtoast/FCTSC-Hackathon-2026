@@ -20,9 +20,9 @@ from .wrapper import GeminiWrapper
 
 logger = logging.getLogger(__name__)
 
-if not load_dotenv(override=True):
-    print("Could not load .env file")
-    raise SystemExit
+# Backend note: Vercel provides env vars without a local .env file, so missing
+# .env must not crash the serverless startup path.
+load_dotenv(override=True)
 
 settings = Settings.from_environment()
 database = HistoryDatabase(":memory:")
