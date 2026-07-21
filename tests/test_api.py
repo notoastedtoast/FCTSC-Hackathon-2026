@@ -102,6 +102,40 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         await analyzer.aclose()
         self.assertTrue(analyzer.closed)
 
+    async def test_analyze_initializes_services_without_lifespan_startup(self) -> None:
+        analyzer = StubAnalyzer(
+            result=ScamAnalysis(
+                risk_level="safe",
+                confidence=0.2,
+                reasoning="Ordinary conversation.",
+                scenarios=scenario_assessments(),
+            )
+        )
+        repository = AnalysisRepository(":memory:")
+        self.addCleanup(repository.close)
+        app = create_app()
+
+        with (
+            patch(
+                "src.main.load_settings",
+                return_value=Settings(
+                    google_api_key="test-key",
+                    google_model="gemini-test",
+                    database_url=":memory:",
+                ),
+            ),
+            patch("src.main.ScamAnalyzer", return_value=analyzer),
+            patch("src.main.AnalysisRepository", return_value=repository),
+        ):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client:
+                response = await client.post("/analyze", json={"text": "Hello from Hanoi"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["detective"]["risk_level"], "safe")
+        self.assertEqual(analyzer.requests, [AnalyzeRequest(text="Hello from Hanoi")])
+
     async def test_root_serves_integrated_frontend_and_logo(self) -> None:
         analyzer = StubAnalyzer()
         app = create_app(analyzer=analyzer, repository=self.repository)

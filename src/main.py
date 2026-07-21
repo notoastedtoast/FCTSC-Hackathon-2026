@@ -110,11 +110,36 @@ class Repository(Protocol):
 
 
 async def get_analyzer(request: Request) -> Analyzer:
+    # Deploy/runtime guard: some serverless platforms may serve a request before the
+    # normal ASGI (Asynchronous Server Gateway Interface) lifespan startup has
+    # initialized app.state services.
+    await _ensure_runtime_state(request)
     return cast(Analyzer, request.app.state.analyzer)
 
 
 async def get_repository(request: Request) -> Repository:
+    # Keep analyzer and repository initialization behavior symmetric per request.
+    await _ensure_runtime_state(request)
     return cast(Repository, request.app.state.repository)
+
+
+async def _ensure_runtime_state(request: Request) -> None:
+    # Added for deployment resilience: lazily initialize backend services on first
+    # request when startup hooks are skipped or not completed yet.
+    if getattr(request.app.state, "analyzer", None) is not None and getattr(
+        request.app.state, "repository", None
+    ) is not None:
+        return
+    settings = cast(Settings | None, getattr(request.app.state, "settings", None))
+    if settings is None:
+        settings = load_settings()
+        request.app.state.settings = settings
+        request.app.state.ai_session_call_limit = settings.ai_session_call_limit
+    if getattr(request.app.state, "analyzer", None) is None:
+        request.app.state.analyzer = ScamAnalyzer(settings)
+    if getattr(request.app.state, "repository", None) is None:
+        request.app.state.repository = AnalysisRepository(settings.database_url)
+        await cast(Repository, request.app.state.repository).initialize()
 
 
 async def _use_database[T](operation: Awaitable[T], action: str) -> T:
