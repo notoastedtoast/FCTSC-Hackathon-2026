@@ -1,133 +1,89 @@
-import os
-from collections.abc import Awaitable, Callable
+"""Credential-gated live provider checks using the authored rewrite corpus."""
+
 import json
+import os
 from pathlib import Path
-from unittest import IsolatedAsyncioTestCase, skipUnless
-from unittest.mock import AsyncMock
+import unittest
 
 import httpx
 from dotenv import load_dotenv
 
-from src.database import HistoryDatabase
-from src.schema import Analysis
+from src.analyzer import ScamAnalyzer
+from src.config import (
+    DEFAULT_GOOGLE_FALLBACK_MODEL,
+    DEFAULT_GOOGLE_MODEL,
+    DEFAULT_GROQ_MODEL,
+    Settings,
+)
+from src.database import AnalysisRepository
+from src.main import create_app
+from src.schemas import AnalyzeResponse
 
 
-load_dotenv(override=True)
-HAS_GEMINI_API_KEY = bool(
-    os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+load_dotenv()
+API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+LIVE_FIXTURE = json.loads(
+    Path(__file__).with_name("live_inputs.json").read_text(encoding="utf-8")
 )
 
 
-def create_live_analyze_test(
-    message: str,
-    *,
-    risk_level: tuple[float, float],
-    minimum_suggestions: int,
-    excerpts: tuple[int, int],
-) -> Callable[["LiveAnalyzeAPITests"], Awaitable[None]]:
-    """Create a live /analyze/ test with inclusive result bounds."""
-
-    minimum_risk, maximum_risk = risk_level
-    minimum_excerpts, maximum_excerpts = excerpts
-    if not 0 <= minimum_risk <= maximum_risk <= 1:
-        raise ValueError("risk_level bounds must be ordered values from 0 to 1")
-    if minimum_suggestions < 0:
-        raise ValueError("minimum_suggestions must be non-negative")
-    if not 0 <= minimum_excerpts <= maximum_excerpts:
-        raise ValueError("excerpt bounds must be ordered non-negative values")
-    async def test(case: "LiveAnalyzeAPITests") -> None:
-        response = await case.client.post("/analyze/", json=message)
-        context = f"Input: {message}\nResponse: {response.text}"
-
-        case.assertEqual(
-            response.status_code,
-            200,
-            context,
-        )
-        result = Analysis.model_validate(response.json())
-        case.assertTrue(result.success, context)
-        case.assertIsNotNone(result.analysis, context)
-        analysis = result.analysis
-        assert analysis is not None
-
-        case.assertGreaterEqual(analysis.risk_level, minimum_risk, context)
-        case.assertLessEqual(analysis.risk_level, maximum_risk, context)
-        case.assertGreaterEqual(
-            len(analysis.suggestions), minimum_suggestions, context
-        )
-        case.assertGreaterEqual(len(analysis.excerpts), minimum_excerpts, context)
-        case.assertLessEqual(len(analysis.excerpts), maximum_excerpts, context)
-
-        if analysis.risk_level > 0.5:
-            case.assertGreater(
-                len(analysis.suggestions),
-                0,
-                f"High-risk analyses must include at least one suggestion\n{context}",
-            )
-        if analysis.risk_level < 0.05:
-            case.assertFalse(
-                analysis.excerpts,
-                f"Very-low-risk analyses must not include excerpts\n{context}",
-            )
-
-        case.database.save_analysis.assert_awaited_once()
-        case.database.save_analysis.reset_mock()
-
-    test.__doc__ = f"Input: {message}"
-    return test
-
-
-@skipUnless(HAS_GEMINI_API_KEY, "A Gemini API key is required for live API tests")
-class LiveAnalyzeAPITests(IsolatedAsyncioTestCase):
-    """Exercise /analyze/ using the real configured Gemini API."""
-
+@unittest.skipUnless(API_KEY, "A Gemini API key is required for live API tests")
+class LiveAnalyzeApiTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        from src import main
-
-        self.main = main
-        self.database = AsyncMock(spec=HistoryDatabase)
-        self._original_database = main.database
-        self._original_overrides = main.app.dependency_overrides.copy()
-        main.database = self.database
-
-        async def get_real_client():
-            return main.client
-
-        main.app.dependency_overrides[main.get_client] = get_real_client
+        assert API_KEY is not None
+        settings = Settings(
+            google_api_key=API_KEY,
+            google_model=os.getenv("GOOGLE_MODEL")
+            or os.getenv("GEMINI_MODEL")
+            or DEFAULT_GOOGLE_MODEL,
+            google_fallback_model=os.getenv("GOOGLE_FALLBACK_MODEL")
+            or os.getenv("GEMINI_FALLBACK_MODEL")
+            or DEFAULT_GOOGLE_FALLBACK_MODEL,
+            groq_api_key=os.getenv("GROQ_API_KEY") or None,
+            groq_model=os.getenv("GROQ_MODEL") or DEFAULT_GROQ_MODEL,
+            ai_session_call_limit=100,
+        )
+        self.analyzer = ScamAnalyzer(settings)
+        self.repository = AnalysisRepository(":memory:")
+        self.app = create_app(
+            settings=settings,
+            analyzer=self.analyzer,
+            repository=self.repository,
+        )
         self.client = httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=main.app),
-            base_url="http://test",
+            transport=httpx.ASGITransport(app=self.app),
+            base_url="http://testserver",
         )
 
     async def asyncTearDown(self) -> None:
         await self.client.aclose()
-        await self.main.client.close()
-        self.main.database = self._original_database
-        self.main.app.dependency_overrides.clear()
-        self.main.app.dependency_overrides.update(self._original_overrides)
+        await self.analyzer.aclose()
+        self.repository.close()
 
-    async def test_inputs_from_json(self) -> None:
-        for index, live_input in enumerate(LIVE_INPUTS, start=1):
-            print(f"[online {index}/{len(LIVE_INPUTS)}]", flush=True)
-            with self.subTest(index=index, message=live_input["input"]):
-                try:
-                    test = create_live_analyze_test(
-                        live_input["input"],
-                        risk_level=(
-                            live_input["risk_level"]["min"],
-                            live_input["risk_level"]["max"],
-                        ),
-                        minimum_suggestions=live_input["recommendations"]["min"],
-                        excerpts=(
-                            live_input["excerpts"]["min"],
-                            live_input["excerpts"]["max"],
-                        ),
-                    )
-                    await test(self)
-                finally:
-                    self.database.save_analysis.reset_mock()
+    async def test_authored_live_inputs(self) -> None:
+        for index, case in enumerate(LIVE_FIXTURE["cases"], start=1):
+            with self.subTest(index=index, message=case["input"]):
+                response = await self.client.post(
+                    "/analyze",
+                    headers={"X-ScamCheck-Request-ID": f"live-input-{index:04d}"},
+                    json={"text": case["input"], "source": "live-test"},
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                result = AnalyzeResponse.model_validate(response.json())
+                self.assertGreaterEqual(
+                    result.detective.confidence, case["risk_level"]["min"]
+                )
+                self.assertLessEqual(
+                    result.detective.confidence, case["risk_level"]["max"]
+                )
+                self.assertEqual(len(result.detective.actions), 3)
+                self.assertGreaterEqual(
+                    len(result.detective.indicator_evidence), case["excerpts"]["min"]
+                )
+                self.assertLessEqual(
+                    len(result.detective.indicator_evidence), case["excerpts"]["max"]
+                )
 
-LIVE_FIXTURE = json.loads(
-    Path(__file__).with_name("live_inputs.json").read_text(encoding="utf-8")
-)
-LIVE_INPUTS = LIVE_FIXTURE["cases"]
+
+if __name__ == "__main__":
+    unittest.main()

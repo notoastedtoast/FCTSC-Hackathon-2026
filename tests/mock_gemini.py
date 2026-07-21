@@ -10,8 +10,6 @@ from typing import Any
 import httpx
 from pydantic import BaseModel
 
-from src.wrapper import GeminiWrapper
-
 GEMINI_RESPONSE_STRUCTURE: dict[str, Any] = {
     "candidates": [
         {
@@ -43,12 +41,18 @@ class MockGeminiAPI:
 
         self._responses.append(httpx.Response(status_code, json=payload or {}))
 
-    def add_analysis(self, analysis: BaseModel) -> None:
-        """Queue a successful structured response for ``GeminiWrapper``."""
+    def add_analysis(self, analysis: BaseModel | Mapping[str, Any]) -> None:
+        """Queue a successful structured Gemini response."""
 
         payload = deepcopy(GEMINI_RESPONSE_STRUCTURE)
         payload["candidates"][0]["content"]["parts"].append(
-            {"text": analysis.model_dump_json()}
+            {
+                "text": (
+                    analysis.model_dump_json()
+                    if isinstance(analysis, BaseModel)
+                    else json.dumps(dict(analysis), ensure_ascii=False)
+                )
+            }
         )
         self.add_response(payload)
 
@@ -57,25 +61,6 @@ class MockGeminiAPI:
             base_url=self.base_url,
             transport=self.transport,
         )
-
-    async def create_wrapper(
-        self,
-        *,
-        model: str = "gemini-test",
-        api_keys: list[str] | None = None,
-        timeout: int = 1,
-    ) -> GeminiWrapper:
-        """Build a ``GeminiWrapper`` that sends requests to this mock."""
-
-        wrapper = GeminiWrapper(
-            self.base_url,
-            api_keys or ["test-api-key"],
-            model,
-            timeout,
-        )
-        await wrapper.client.aclose()
-        wrapper.client = self.client()
-        return wrapper
 
     def _handle_request(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)

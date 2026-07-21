@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Path as ApiPath
 from fastapi.responses import FileResponse
 from pydantic import TypeAdapter
 
-from .schema import ScamType, ScamTypeGroup
+from .schemas import ScamType, ScamTypeGroup
 
 
 router = APIRouter()
@@ -77,9 +77,17 @@ async def frontend_app() -> FileResponse:
 
 @router.get("/service-worker.js", include_in_schema=False)
 async def frontend_service_worker() -> FileResponse:
-    return frontend_file("service-worker.js")
+    return FileResponse(
+        frontend_directory / "service-worker.js",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
 
 
 @router.get("/scamcheck-logo.png", include_in_schema=False)
 async def frontend_logo() -> FileResponse:
     return frontend_file("scamcheck-logo.png")
+
+
+@router.get("/detective-avatar.png", include_in_schema=False)
+async def frontend_detective_avatar() -> FileResponse:
+    return frontend_file("detective-avatar.png")

@@ -95,6 +95,12 @@ class DeterministicCheckerTests(IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(self.requests), 1)
 
+    async def test_default_check_flags_shortener_without_contacting_it(self) -> None:
+        result = await check_message("Xem thông tin tại bit.ly/check")
+
+        self.assertIn("shortened_url", {item.kind for item in result.findings})
+        self.assertEqual(result.url_checks[0].destination, "https://bit.ly/check")
+
     async def test_flags_bank_and_government_lookalikes(self) -> None:
         self.assertEqual(
             find_impersonated_domain("https://vietcornbank-login.example"),
