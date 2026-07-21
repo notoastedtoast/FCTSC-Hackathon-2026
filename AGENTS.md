@@ -61,9 +61,11 @@ contract below records behavior that is easy to miss from schemas alone.
 | `DELETE /history/{analysis_id}` | A 32-character lowercase hexadecimal analysis ID plus the session cookie | Empty 204 response | Hides the matching result from the current session's history without deleting its analysis or idempotency record; returns 404 when it is absent or belongs to another session. |
 | `GET /` | None | `frontend/index.html` | Registered when the file exists; it does not expose other repository files. |
 | `GET /styles.css` | None | `frontend/styles.css` | Explicit stylesheet route; no directory mount or listing. |
-| `GET /app.js` | None | `frontend/app.js` | Explicit JavaScript route; no directory mount or listing. |
+| `GET /app.js` | None | `frontend/app.js` | Explicit controller JavaScript route; no directory mount or listing. |
+| `GET /app-data.js` | None | `frontend/app-data.js` | Explicit shared data/state JavaScript route; no directory mount or listing. |
+| `GET /app-render.js` | None | `frontend/app-render.js` | Explicit rendering-helper JavaScript route; no directory mount or listing. |
 | `GET /offline-analyzer.js` | None | `frontend/offline-analyzer.js` | Conservative browser-only fallback used when the browser reports no connection. |
-| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the seven authored shell assets for offline loading; it never intercepts API routes. Core UI files use network-first refresh with cached fallback. |
+| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the authored shell assets for offline loading; it never intercepts API routes. Core UI files use network-first refresh with cached fallback. |
 | `GET /scamcheck-logo.png` | None | `frontend/scamcheck-logo.png` | Explicit PNG route; the repository and other frontend files are never exposed as a static directory. |
 | `GET /detective-avatar.png` | None | `frontend/detective-avatar.png` | Explicit PNG route for the Detective result-message avatar; no frontend directory is mounted. |
 | `GET /psychologist-avatar.png` | None | `frontend/psychologist-avatar.png` | Explicit PNG route for the Cô tâm lý result-card avatar; no frontend directory is mounted. |
@@ -124,7 +126,9 @@ scroll pauses follow mode and exposes a down-arrow control that resumes it. The 
 `used`/`limit` usage and disables submission after the session reaches its ceiling.
 
 The browser switches from the composer to a dedicated processing frame while a check is in
-progress; it has no browser-cancel control. Online
+progress; it has no browser-cancel control. The loading view is intentionally simple: a
+single Detective avatar, one rotating ring, and short status copy rather than extra step
+chips or bouncing progress dots. Online
 requests persist a random request ID with the pending message in tab-scoped storage before
 calling the API. A manual retry of the same message reuses that ID, so completed work does
 not consume quota twice; the browser does not automatically retry or replace an interrupted
@@ -142,8 +146,9 @@ snapshot. “Xem kết quả” uses the existing full result renderer without r
 entry. Deleting an online entry calls the session-scoped hide route; deleting an offline
 entry changes only localStorage.
 
-The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app.js`,
-`/scamcheck-logo.png`, `/detective-avatar.png`, and `/psychologist-avatar.png` after a successful online visit. When the browser reports that it is
+The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app-data.js`,
+`/app-render.js`, `/app.js`, `/scamcheck-logo.png`, `/detective-avatar.png`, and
+`/psychologist-avatar.png` after a successful online visit. When the browser reports that it is
 offline, `offline-analyzer.js` performs a conservative rule-based assessment on the device
 and labels it as preliminary. It does not call Gemini, consume quota, write the database, or claim
 provider accuracy. API responses, submitted text, analysis results, and session usage are
@@ -163,7 +168,7 @@ cannot establish safety.
 ### Frontend recognition exercise
 
 - The ten authored prompts, balanced `scam`/`safe` labels, and explanations live only in
-  `frontend/app.js`.
+  `frontend/app-data.js`.
 - The browser displays one prompt at a time and reveals its label and explanation only
   after the user chooses an answer.
 - Grading and score state run in page memory. They do not call an API or Gemini and are
@@ -304,19 +309,24 @@ legacy-schema test in `tests/test_database.py`.
 - `frontend/index.html`: accessible application shell with persistent top navigation,
   separate analysis/library/history/practice views, library list/detail frames, dedicated
   processing and result states, connectivity notice, an icon-only voice control inside the message field,
-  Detective result-message markup, and references to the browser assets.
+  Detective result-message markup, references to the browser assets, and the split script
+  loading order (`offline-analyzer.js`, `app-data.js`, `app-render.js`, then `app.js`).
 - `frontend/styles.css`: mobile-first page styling, the automatic 900px+ widescreen
   analysis workspace, responsive navigation and result/library/history/practice layouts,
-  sequential Detective-then-Cô-tâm-lý message-bubble animations, focus states, and reduced-motion
-  behavior.
+  sequential Detective-then-Cô-tâm-lý message-bubble animations, the simplified loading
+  panel, focus states, and reduced-motion behavior.
+- `frontend/app-data.js`: shared constants, cached DOM references, mutable page state,
+  authored sample messages, practice prompts, library group metadata, and other static
+  frontend-only datasets.
+- `frontend/app-render.js`: safe result rendering helpers, highlight rendering,
+  Detective/Cô tâm lý bubble construction, recommendation rendering, and result-frame
+  presentation.
 - `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
-  handling, safe result rendering, voice input, server-backed online history, bounded
-  local-only offline history, the API-backed scam library, and local recognition
-  prompts/grading/score. It keeps the
-  dedicated processing frame during requests, registers the offline shell service worker, routes
-  offline submissions through the local analyzer, owns hash-based view switching, and
-  supports reusing a history item in the composer. It contains no direct character API
-  call, chat UI, or duplicated scam catalog.
+  handling, voice input, server-backed online history, bounded local-only offline history,
+  the API-backed scam library, local recognition prompts/grading/score, routing, event
+  wiring, service-worker registration, offline submission handoff, and history reuse into
+  the composer. It contains no direct character API call, chat UI, or duplicated scam
+  catalog.
 - `frontend/offline-analyzer.js`: conservative, browser-only rules that return a compatible
   preliminary risk result without network, quota, cookie, or database access. It is not
   used to override an online provider-chain result.
