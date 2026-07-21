@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from pydantic import BaseModel
 import httpx
 import logging
@@ -31,7 +33,7 @@ class GeminiWrapper:
 
     @classmethod
     def from_settings(cls, settings: Settings):
-        return GeminiWrapper(settings.base_url, settings.api_keys, settings.model, 12)
+        return GeminiWrapper(settings.base_url, settings.api_keys, settings.model, 30)
 
     async def _generate[T: BaseModel](
         self,
