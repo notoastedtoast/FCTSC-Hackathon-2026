@@ -5,6 +5,8 @@ import logging
 
 from fastapi import Body, Cookie, Depends, FastAPI, HTTPException, Response
 from dotenv import load_dotenv
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 
 from .database import HistoryDatabase, HistoryEntry
 from .deterministic_checker import check_message
@@ -144,3 +146,8 @@ async def delete_history(
         raise HTTPException(401, "Session ID is required")
     if not await database.delete_history(session_id, str(history_id)):
         raise HTTPException(404, "History item not found")
+
+@app.get("/health/")
+async def health() -> JSONResponse:
+    data = {"status": "active"}
+    return JSONResponse(content=jsonable_encoder(data))
