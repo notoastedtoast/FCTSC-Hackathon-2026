@@ -101,6 +101,7 @@ GUIDE = CharacterConfig(
 class Analysis(BaseModel):
     success: bool
     analysis: DetectiveAnalysis | None = None
+    guide_output: str | None = None
     deterministic_findings: list[RuleFinding] = []
     deterministic_risk_floor: Literal["low", "medium", "high"] = "low"
 
@@ -130,8 +131,8 @@ class Settings:
     def from_environment(cls):
         api_keys = os.getenv("GOOGLE_API_KEY") if (default := os.getenv("GEMINI_API_KEY")) is None else default
         return cls(
-            os.getenv("BASE_URL"),
-            api_keys.split(","),
-            os.getenv("GEMINI_MODEL"),
-            int(os.environ["AI_SESSION_CALL_LIMIT"]),
+            os.getenv("BASE_URL", "https://generativelanguage.googleapis.com/v1beta/"),
+            [key for key in (api_keys or "").split(",") if key],
+            os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+            int(os.getenv("AI_SESSION_CALL_LIMIT", "10")),
         )

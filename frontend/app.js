@@ -238,7 +238,7 @@ function backendHistoryToItem(entry){
     id:String(entry?.id||''),
     message:String(entry?.message||''),
     date:String(entry?.created_at||''),
-    result:backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.guide_output})
+    result:backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.analysis?.guide_output||entry?.guide_output})
   };
 }
 
@@ -270,7 +270,7 @@ async function showSavedHistoryResult(item){
     switchView('analyze');
     showResultFrame(
       String(entry.message||''),
-      backendAnalysisToPayload(entry.analysis,{guideOutput:entry.guide_output}),
+      backendAnalysisToPayload(entry.analysis,{guideOutput:entry.analysis?.guide_output||entry.guide_output}),
       {fromHistory:true}
     );
   }catch(error){
@@ -831,32 +831,10 @@ document.addEventListener('keydown',event=>{
 
 async function prepareOnlineResult(submittedText,analysisResult){
   const needsGuide=['medium','high'].includes(analysisResult?.risk_level);
-  let entries=[];
-  try{
-    const history=await requestJson('/history/');
-    entries=Array.isArray(history)?history:[];
-  }catch(error){
-    return backendAnalysisToPayload(analysisResult,{guideUnavailable:needsGuide});
-  }
-
-  const entry=entries.find(item=>item?.message===submittedText)||entries[0];
-  let guideOutput=entry?.guide_output||null;
-  let guideUnavailable=needsGuide&&!entry;
-  if(needsGuide&&entry&&!guideOutput){
-    try{
-      const guide=await requestJson('/guide/',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(entry.id)
-      });
-      guideOutput=guide?.data||null;
-      if(guideOutput)entry.guide_output=guideOutput;
-    }catch(error){
-      guideUnavailable=true;
-    }
-  }
-  historyCache=entries.map(backendHistoryToItem);
-  return backendAnalysisToPayload(analysisResult,{guideOutput,guideUnavailable});
+  return backendAnalysisToPayload(analysisResult,{
+    guideOutput:analysisResult?.guide_output||null,
+    guideUnavailable:needsGuide&&!analysisResult?.guide_output
+  });
 }
 
 async function runAnalysis(submittedText){

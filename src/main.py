@@ -22,9 +22,7 @@ from .wrapper import GeminiWrapper
 
 logger = logging.getLogger(__name__)
 
-if not load_dotenv(override=True):
-    print("Could not load .env file")
-    raise SystemExit
+load_dotenv(override=True)
 
 settings = Settings.from_environment()
 database = HistoryDatabase(":memory:")
@@ -71,6 +69,8 @@ async def analyze(
     data: Annotated[str, Body(...)],
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> Analysis:
+    if not 1 <= len(data.strip()) <= 10_000:
+        raise HTTPException(422, "Message must contain 1 to 10000 non-whitespace characters")
     session_id = consume_ai_call(response, session_id)
     deterministic_result = await check_message(data)
 
@@ -87,6 +87,11 @@ async def analyze(
         deterministic_findings=deterministic_result.findings,
         deterministic_risk_floor=deterministic_result.risk_floor,
     )
+    if result.risk_level != "low":
+        try:
+            result.guide_output = (await client.generate(GUIDE, detective_analysis.model_dump_json())).data
+        except Exception as e:
+            logger.exception(f"Gemini guide generation failed with exception {e}")
     await database.save_analysis(session_id, data, result)
     return result
 
