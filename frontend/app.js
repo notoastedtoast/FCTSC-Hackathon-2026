@@ -116,10 +116,6 @@ function syncQuickInputLayout(){
 syncQuickInputLayout();
 mobileLayoutQuery.addEventListener('change',syncQuickInputLayout);
 
-function viewFromHash(){
-  return routeFromHash().view;
-}
-
 // Hash routing keeps the app single-page while still allowing direct links.
 function routeFromHash(){
   const candidate=window.location.hash.slice(1);
@@ -662,20 +658,6 @@ async function prepareOnlineResult(submittedText,analysisResult){
     payload.date=String(entry.created_at||new Date().toISOString());
   }
   return payload;
-}
-
-async function loadUsage(){
-  if(isOffline){
-    usage.textContent='Đang ngoại tuyến. Phân tích sơ bộ trên thiết bị không dùng lượt AI.';
-    return;
-  }
-  try{
-    const payload=await requestJson('/session/ai-calls');
-    applyUsage(payload?.usage);
-  }catch(error){
-    usage.textContent='Chưa thể tải số lượt AI đã dùng.';
-  }
-  updateInputState();
 }
 
 function applyUsage(aiUsage){
