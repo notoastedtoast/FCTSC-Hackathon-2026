@@ -1,5 +1,5 @@
 
-const CACHE_NAME="scamcheck-shell-v17";
+const CACHE_NAME="scamcheck-shell-v18";
 const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app.js","/scamcheck-logo.png","/detective-avatar.png","/psychologist-avatar.png"];
 const NETWORK_FIRST_PATHS=new Set(["/","/styles.css","/app.js"]);
 

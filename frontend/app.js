@@ -273,12 +273,54 @@ function getHistory(){
   return historyCache;
 }
 
+function frontendRiskLevel(level){
+  return {low:'safe',medium:'suspicious',high:'dangerous'}[level]||'suspicious';
+}
+
+function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=false}={}){
+  const analysis=result?.analysis||{};
+  const evidence=analysis.excerpts&&typeof analysis.excerpts==='object'
+    ?Object.entries(analysis.excerpts).slice(0,4).map(([excerpt,reason])=>({
+      label:String(reason||'Dấu hiệu đáng chú ý'),
+      excerpt:String(excerpt)
+    })).filter(item=>item.excerpt)
+    :[];
+  const riskLevel=frontendRiskLevel(result?.risk_level);
+
+  return {
+    offline:false,
+    detective:{
+      title:'Thám tử',
+      analysis_mode:'online',
+      risk_level:riskLevel,
+      confidence:Number.isFinite(analysis.risk_level)?analysis.risk_level:0.5,
+      reasoning:String(analysis.reasoning||'Không có phần giải thích được lưu.'),
+      indicator_evidence:evidence,
+      indicators:evidence.map(item=>item.label),
+      actions:Array.isArray(analysis.suggestions)
+        ?analysis.suggestions.slice(0,3).map(String)
+        :[]
+    },
+    deterministic_findings:Array.isArray(result?.deterministic_findings)
+      ?result.deterministic_findings
+      :[],
+    character:guideOutput?{
+      character_id:'calming-guide',
+      title:'Cô tâm lý',
+      message:String(guideOutput)
+    }:null,
+    character_notice:guideUnavailable
+      ?'Cô tâm lý chưa thể tải hướng dẫn bổ sung lúc này.'
+      :null
+  };
+}
+
 function backendHistoryToItem(entry){
   return {
     id:String(entry?.id||''),
     message:String(entry?.message||''),
     date:String(entry?.created_at||''),
-    result:entry?.response||null,
+    result:backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.guide_output}),
     offline:false
   };
 }
@@ -534,7 +576,26 @@ function apiErrorMessage(statusCode,detail){
 }
 
 async function requestJson(path,options={}){
-  const response=await fetch(path,{credentials:'same-origin',...options});
+  const requestOptions={credentials:'same-origin',...options};
+  let requestPath=path;
+  let submittedText=null;
+  if(path==='/analyze'){
+    try{
+      const parsed=JSON.parse(String(requestOptions.body||'null'));
+      if(parsed&&typeof parsed==='object'&&typeof parsed.text==='string'){
+        submittedText=parsed.text;
+        requestPath='/analyze/';
+        requestOptions.body=JSON.stringify(submittedText);
+        if(requestOptions.headers&&typeof requestOptions.headers==='object'){
+          delete requestOptions.headers['X-ScamCheck-Request-ID'];
+        }
+      }
+    }catch(error){
+      // Leave the request untouched when the body is not the expected frontend shape.
+    }
+  }
+
+  const response=await fetch(requestPath,requestOptions);
   let payload=null;
   try{
     payload=await response.json();
@@ -545,6 +606,52 @@ async function requestJson(path,options={}){
     const requestError=new Error(apiErrorMessage(response.status,payload?.detail));
     requestError.status=response.status;
     throw requestError;
+  }
+  if(requestPath==='/analyze/'&&submittedText!==null){
+    return prepareOnlineResult(submittedText,payload);
+  }
+  return payload;
+}
+
+async function loadUsageCompat(){
+  usage.textContent=isOffline
+    ?'Đang ngoại tuyến. Phân tích sơ bộ trên thiết bị không dùng lượt AI.'
+    :sessionAtLimit
+      ?'Phiên này đã chạm giới hạn kiểm tra AI.'
+      :'Mỗi lần kiểm tra trực tuyến sử dụng một lượt AI của phiên.';
+}
+
+async function prepareOnlineResult(submittedText,analysisResult){
+  const needsGuide=['medium','high'].includes(analysisResult?.risk_level);
+  let entries=[];
+  try{
+    const history=await requestJson('/history/');
+    entries=Array.isArray(history)?history:[];
+  }catch(error){
+    return backendAnalysisToPayload(analysisResult,{guideUnavailable:needsGuide});
+  }
+
+  const entry=entries.find(item=>item?.message===submittedText)||entries[0];
+  let guideOutput=entry?.guide_output||null;
+  let guideUnavailable=needsGuide&&!entry;
+  if(needsGuide&&entry&&!guideOutput){
+    try{
+      const guide=await requestJson('/guide/',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(entry.id)
+      });
+      guideOutput=guide?.data||null;
+      if(guideOutput)entry.guide_output=guideOutput;
+    }catch(error){
+      guideUnavailable=true;
+    }
+  }
+  historyCache=entries.map(backendHistoryToItem);
+  const payload=backendAnalysisToPayload(analysisResult,{guideOutput,guideUnavailable});
+  if(entry){
+    payload.id=String(entry.id||'');
+    payload.date=String(entry.created_at||new Date().toISOString());
   }
   return payload;
 }
@@ -582,7 +689,7 @@ function updateConnectivityState(){
   }else{
     connectivityStatus.hidden=true;
   }
-  void loadUsage();
+  void loadUsageCompat();
   updateInputState();
 }
 
@@ -1108,11 +1215,11 @@ async function runAnalysis(submittedText){
         }catch(error){
           // The response is still valid when tab storage is unavailable.
         }
-        applyUsage(payload.usage);
-        historyCache.unshift({
+        if(payload?.usage)applyUsage(payload.usage);
+        if(payload?.id&&!historyCache.some(item=>item.id===payload.id))historyCache.unshift({
           id:payload.id,
           message:submittedText,
-          date:new Date().toISOString(),
+          date:payload.date||new Date().toISOString(),
           result:payload,
           offline:false
         });
@@ -1136,7 +1243,7 @@ async function runAnalysis(submittedText){
       if(navigator.onLine)connectivityStatus.hidden=true;
       showFeedback(Number.isInteger(error.status)?error.message:'Không thể kết nối tới máy chủ.');
     }
-    void loadUsage();
+    void loadUsageCompat();
     messageInput.focus();
   }finally{
     hideProcessingFrame();

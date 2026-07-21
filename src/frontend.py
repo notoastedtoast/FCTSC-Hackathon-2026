@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Path as ApiPath
 from fastapi.responses import FileResponse
 from pydantic import TypeAdapter
 
-from .schemas import ScamType, ScamTypeGroup
+from .schema import ScamType, ScamTypeGroup
 
 
 router = APIRouter()
