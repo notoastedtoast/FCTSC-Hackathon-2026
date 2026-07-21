@@ -1,3 +1,5 @@
+"""Deterministic helper checks that supplement, but do not replace, model output."""
+
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
@@ -8,11 +10,13 @@ import httpx
 
 from .url_extractor import extract_urls
 
+# Known short-link hosts are flagged without resolving them during normal analysis.
 SHORTENER_HOSTS = frozenset({
     "bit.ly", "buff.ly", "cutt.ly", "is.gd", "ow.ly", "rb.gy", "rebrand.ly",
     "shorturl.at", "t.co", "tiny.cc", "tinyurl.com",
 })
 MAX_REDIRECTS = 5
+# Protected domains are used for lookalike and impersonation checks.
 PROTECTED_DOMAINS = frozenset({
     "acb.com.vn", "agribank.com.vn", "baohiemxahoi.gov.vn", "bidv.com.vn",
     "chinhphu.vn", "dichvucong.gov.vn", "gdt.gov.vn", "hdbank.com.vn",
@@ -67,6 +71,7 @@ HIGH_RISK_COMBINATIONS = (
 
 @dataclass(frozen=True)
 class URLCheck:
+    """One URL-related deterministic finding."""
     url: str
     destination: str
     impersonated_domain: str | None = None
@@ -75,6 +80,7 @@ class URLCheck:
 
 @dataclass(frozen=True)
 class RuleFinding:
+    """One text or URL signal returned to the UI as supporting evidence."""
     kind: str
     severity: Literal["medium", "high"]
     excerpt: str
@@ -83,6 +89,7 @@ class RuleFinding:
 
 @dataclass(frozen=True)
 class DeterministicResult:
+    """Combined deterministic output returned alongside the AI analysis."""
     url_checks: list[URLCheck]
     findings: list[RuleFinding]
     risk_floor: Literal["low", "medium", "high"]

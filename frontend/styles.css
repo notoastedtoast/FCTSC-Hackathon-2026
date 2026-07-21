@@ -1,3 +1,6 @@
+/* Shared ScamCheck styles.
+   The file is kept dense on purpose, but split conceptually into: tokens,
+   shell/navigation, analysis, results, library, history, and practice. */
 :root{
   --navy:#102f4f;
   --navy-soft:#244a70;

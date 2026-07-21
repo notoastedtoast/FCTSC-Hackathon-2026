@@ -1,8 +1,11 @@
+/* Browser-only fallback analyzer used when the device is offline.
+   It is intentionally conservative and returns a preliminary result. */
 const ScamCheckOffline=(()=>{
   const URL_PATTERN=/(?:https?:\/\/[^\s]+|www\.[^\s]+|(?:bit\.ly|tinyurl\.com|t\.co|shorturl\.at)\/[^\s]+|[a-z0-9][a-z0-9-]{2,}\.[a-z]{2,63}(?:\/[^\s]*)?)/giu;
   const TRUSTED_URL_PATTERN=/^(?:https?:\/\/)?accounts\.google\.com(?:[/:?#]|$)/iu;
 
   function findUntrustedUrl(text){
+    // Treat unknown URLs as caution signals without contacting the network.
     const matches=[...text.matchAll(URL_PATTERN)];
     for(const match of matches){
       const value=match[0];
@@ -15,6 +18,7 @@ const ScamCheckOffline=(()=>{
   }
 
   function foldText(text){
+    // Fold accents so simpler regex rules can still match Vietnamese text.
     return text.normalize('NFD').replace(/[\u0300-\u036f]/gu,'').replace(/đ/giu,'d');
   }
 
@@ -134,6 +138,7 @@ const ScamCheckOffline=(()=>{
   ];
 
   function analyze(text){
+    // Produce the same general response shape as the online analyzer.
     const findings=[];
     const foldedText=foldText(text);
     let score=0;

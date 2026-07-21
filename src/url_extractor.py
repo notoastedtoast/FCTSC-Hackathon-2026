@@ -1,3 +1,5 @@
+"""Tiny URL extractor used by deterministic checks."""
+
 import re
 
 URL_PATTERN = re.compile(

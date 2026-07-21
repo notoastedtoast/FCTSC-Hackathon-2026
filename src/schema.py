@@ -1,3 +1,5 @@
+"""Shared Pydantic models and prompts for the stable backend."""
+
 from pydantic import BaseModel, computed_field, Field
 
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ from .deterministic_checker import RuleFinding
 
 @dataclass(frozen=True)
 class CharacterConfig[T: BaseModel]:
+    """Configuration bundle for one structured model persona."""
     system_instruction: str
     prompt: str
     schema: type[T]
@@ -16,6 +19,7 @@ class CharacterConfig[T: BaseModel]:
 
 
 class DetectiveAnalysis(BaseModel):
+    """Structured output expected from the detective model."""
     risk_level: float = Field(ge=0.0, le=1.0)
     reasoning: str
     suggestions: list[str]
@@ -23,6 +27,7 @@ class DetectiveAnalysis(BaseModel):
 
 
 class GuideOutput(BaseModel):
+    """Structured wrapper for the optional calming guide text."""
     data: str
 
 
@@ -30,6 +35,7 @@ ScamTypeGroup = Literal["fake_bank", "fake_police", "prize", "fake_delivery"]
 
 
 class ScamType(BaseModel):
+    """One authored scam-library entry served to the frontend."""
     id: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9-]+$")
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(min_length=1, max_length=1_000)
@@ -99,6 +105,7 @@ GUIDE = CharacterConfig(
 
 
 class Analysis(BaseModel):
+    """Combined API response stored in history and returned by /analyze/."""
     success: bool
     analysis: DetectiveAnalysis | None = None
     deterministic_findings: list[RuleFinding] = []
@@ -107,6 +114,7 @@ class Analysis(BaseModel):
     @computed_field
     @property
     def risk_level(self) -> Literal["low", "medium", "high"] | None:
+        """Map the numeric Gemini score into the frontend's low/medium/high labels."""
         if self.analysis is None:
             return None
         ai_risk = "low" if self.analysis.risk_level <= LOW_RISK_THRESHOLD else (
@@ -121,6 +129,7 @@ class Cookies(BaseModel):
 
 @dataclass
 class Settings:
+    """Minimal runtime settings used by the restored stable backend."""
     base_url: str
     api_keys: list[str]
     model: str
@@ -128,6 +137,7 @@ class Settings:
 
     @classmethod
     def from_environment(cls):
+        """Read settings from env vars while tolerating Vercel-style injected envs."""
         api_keys = (
             os.getenv("GEMINI_API_KEY")
             or os.getenv("GOOGLE_API_KEY")

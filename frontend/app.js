@@ -1,10 +1,15 @@
+/* ScamCheck browser client.
+   Main sections: DOM/state setup, routing, analysis flow, history, library,
+   and the local practice exercise. */
+const byId=id=>document.getElementById(id),query=(selector,root=document)=>root.querySelector(selector),queryAll=(selector,root=document)=>root.querySelectorAll(selector);
 const MIN_LENGTH=10,MAX_LENGTH=10000,DETECTIVE_MESSAGE_START_MS=180,DETECTIVE_MESSAGE_GAP_MS=650,MESSAGE_ANIMATION_MS=580,DRAFT_KEY='scamcheck-message-draft',OFFLINE_HISTORY_KEY='scamcheck-offline-history-v1',PENDING_ANALYSIS_KEY='scamcheck-pending-analysis-v1',MAX_OFFLINE_HISTORY=10;
-const messageInput=document.getElementById('message'),clearButton=document.getElementById('clear-button'),checkButton=document.getElementById('check-button'),processingFrame=document.getElementById('processing-frame'),characterCount=document.getElementById('character-count'),feedback=document.getElementById('message-feedback'),usage=document.getElementById('usage'),connectivityStatus=document.getElementById('connectivity-status'),connectivityMessage=document.getElementById('connectivity-message'),voiceButton=document.getElementById('voice-button'),voiceButtonLabel=document.getElementById('voice-button-label'),voiceStatus=document.getElementById('voice-status'),inputFrame=document.getElementById('input-frame'),resultFrame=document.getElementById('result-frame'),riskCard=document.getElementById('risk-card'),riskLabel=document.getElementById('risk-label'),riskDescription=document.getElementById('risk-description'),signalList=document.getElementById('signal-list'),resultContextLabel=document.getElementById('result-context-label'),resultScrollButton=document.getElementById('result-scroll-button'),historyReturnButton=document.getElementById('history-return-button'),sampleButtons=document.querySelectorAll('.sample-button'),historyList=document.getElementById('history-list'),historySelectedCount=document.getElementById('history-selected-count'),historyDeleteButton=document.getElementById('history-delete-button'),deleteConfirmModal=document.getElementById('delete-confirm-modal'),deleteConfirmText=document.getElementById('delete-confirm-text'),deletePreview=document.getElementById('delete-preview'),deleteCancelButton=document.getElementById('delete-cancel-button'),deleteConfirmButton=document.getElementById('delete-confirm-button');
-const psychologyBlock=document.getElementById('psychology-block'),psychologyMessage=document.getElementById('psychology-message'),actionSection=document.getElementById('action-section');
-const practiceContent=document.getElementById('practice-content'),practiceMessage=document.getElementById('practice-message'),practiceProgress=document.getElementById('practice-progress'),practiceScore=document.getElementById('practice-score'),practiceAnswerButtons=document.querySelectorAll('.practice-answer-button'),practiceFeedback=document.getElementById('practice-feedback'),practiceNextButton=document.getElementById('practice-next-button');
-const libraryListFrame=document.getElementById('library-list-frame'),libraryDetailFrame=document.getElementById('library-detail-frame'),librarySearch=document.getElementById('library-search'),libraryFilters=document.querySelectorAll('.library-filter'),libraryResultCount=document.getElementById('library-result-count'),libraryLoadError=document.getElementById('library-load-error'),libraryRetryButton=document.getElementById('library-retry-button'),scamTypeList=document.getElementById('scam-type-list'),libraryEmpty=document.getElementById('library-empty'),libraryResetButton=document.getElementById('library-reset-button'),libraryDetailBack=document.getElementById('library-detail-back'),libraryDetailError=document.getElementById('library-detail-error'),libraryDetailContent=document.getElementById('library-detail-content'),libraryDetailIcon=document.getElementById('library-detail-icon'),libraryDetailGroup=document.getElementById('library-detail-group'),libraryDetailTitle=document.getElementById('library-detail-title'),libraryDetailDescription=document.getElementById('library-detail-description'),libraryDetailSigns=document.getElementById('library-detail-signs'),libraryDetailExample=document.getElementById('library-detail-example'),libraryDetailDo=document.getElementById('library-detail-do'),libraryDetailDont=document.getElementById('library-detail-dont');
-const navLinks=document.querySelectorAll('.nav-link[data-view]'),pageViews=document.querySelectorAll('[data-view-panel]');
-const toolsColumn=document.querySelector('.tools-column'),mobileQuickCards=document.querySelectorAll('.sample-card'),mobileLayoutQuery=window.matchMedia('(max-width: 620px)');
+// Cache the DOM once so the rest of the file can stay shorter.
+const messageInput=byId('message'),clearButton=byId('clear-button'),checkButton=byId('check-button'),processingFrame=byId('processing-frame'),characterCount=byId('character-count'),feedback=byId('message-feedback'),usage=byId('usage'),connectivityStatus=byId('connectivity-status'),connectivityMessage=byId('connectivity-message'),voiceButton=byId('voice-button'),voiceButtonLabel=byId('voice-button-label'),voiceStatus=byId('voice-status'),inputFrame=byId('input-frame'),resultFrame=byId('result-frame'),riskCard=byId('risk-card'),riskLabel=byId('risk-label'),riskDescription=byId('risk-description'),signalList=byId('signal-list'),resultContextLabel=byId('result-context-label'),resultScrollButton=byId('result-scroll-button'),historyReturnButton=byId('history-return-button'),sampleButtons=queryAll('.sample-button'),historyList=byId('history-list'),historySelectedCount=byId('history-selected-count'),historyDeleteButton=byId('history-delete-button'),deleteConfirmModal=byId('delete-confirm-modal'),deleteConfirmText=byId('delete-confirm-text'),deletePreview=byId('delete-preview'),deleteCancelButton=byId('delete-cancel-button'),deleteConfirmButton=byId('delete-confirm-button');
+const psychologyBlock=byId('psychology-block'),psychologyMessage=byId('psychology-message'),actionSection=byId('action-section');
+const practiceContent=byId('practice-content'),practiceMessage=byId('practice-message'),practiceProgress=byId('practice-progress'),practiceScore=byId('practice-score'),practiceAnswerButtons=queryAll('.practice-answer-button'),practiceFeedback=byId('practice-feedback'),practiceNextButton=byId('practice-next-button');
+const libraryListFrame=byId('library-list-frame'),libraryDetailFrame=byId('library-detail-frame'),librarySearch=byId('library-search'),libraryFilters=queryAll('.library-filter'),libraryResultCount=byId('library-result-count'),libraryLoadError=byId('library-load-error'),libraryRetryButton=byId('library-retry-button'),scamTypeList=byId('scam-type-list'),libraryEmpty=byId('library-empty'),libraryResetButton=byId('library-reset-button'),libraryDetailBack=byId('library-detail-back'),libraryDetailError=byId('library-detail-error'),libraryDetailContent=byId('library-detail-content'),libraryDetailIcon=byId('library-detail-icon'),libraryDetailGroup=byId('library-detail-group'),libraryDetailTitle=byId('library-detail-title'),libraryDetailDescription=byId('library-detail-description'),libraryDetailSigns=byId('library-detail-signs'),libraryDetailExample=byId('library-detail-example'),libraryDetailDo=byId('library-detail-do'),libraryDetailDont=byId('library-detail-dont');
+const navLinks=queryAll('.nav-link[data-view]'),pageViews=queryAll('[data-view-panel]');
+const toolsColumn=query('.tools-column'),mobileQuickCards=queryAll('.sample-card'),mobileLayoutQuery=window.matchMedia('(max-width: 620px)');
 let recognition=null,isRecording=false,selectedHistoryIds=new Set(),isAnalyzing=false,sessionAtLimit=false,isOffline=!navigator.onLine,historyCache=[],psychologySequenceTimer=null;
 let autoFollowResult=true,latestResultMessage=null,lastResultScrollY=window.scrollY,resultScrollGuardUntil=0,resultTouchY=null;
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
@@ -99,6 +104,7 @@ const libraryUnsafeActions=['Không cung cấp mật khẩu, mã OTP hoặc thô
 const normalizedValue=()=>messageInput.value.replace(/\s+/g,' ').trim();
 const viewTitles={analyze:'Kiểm tra',library:'Thư viện lừa đảo',history:'Lịch sử',practice:'Luyện tập'};
 
+// Move quick sample cards below the main submit button on small screens.
 function syncQuickInputLayout(){
   if(mobileLayoutQuery.matches){
     mobileQuickCards.forEach(card=>checkButton.after(card));
@@ -114,6 +120,7 @@ function viewFromHash(){
   return routeFromHash().view;
 }
 
+// Hash routing keeps the app single-page while still allowing direct links.
 function routeFromHash(){
   const candidate=window.location.hash.slice(1);
   if(candidate==='library')return {view:'library',detailId:null};
@@ -127,6 +134,7 @@ function routeFromHash(){
   return {view:Object.hasOwn(viewTitles,candidate)?candidate:'analyze',detailId:null};
 }
 
+// Swap visible panels and trigger any page-specific refresh work.
 function switchView(view,{focus=false}={}){
   const target=Object.hasOwn(viewTitles,view)?view:'analyze';
   pageViews.forEach(panel=>{

@@ -1,3 +1,5 @@
+"""Small Gemini transport wrapper used by the stable backend."""
+
 from pydantic import BaseModel
 import httpx
 import logging
@@ -14,12 +16,14 @@ logger = logging.getLogger(__name__)
 
 
 class APIFailureError(Exception):
+    """Legacy compatibility exception kept for callers that import it."""
     pass
 
 
 @final
 class GeminiWrapper:
     def __init__(self, base_url: str, api_keys: list[str], model: str, timeout: int):
+        # The wrapper keeps one shared HTTP client and rotates keys on 429.
         self.model = model
         self.api_keys = api_keys
         self.key_index = 0
@@ -31,6 +35,7 @@ class GeminiWrapper:
 
     @classmethod
     def from_settings(cls, settings: Settings):
+        """Create the wrapper from environment-backed application settings."""
         return GeminiWrapper(settings.base_url, settings.api_keys, settings.model, 30)
 
     async def _generate[T: BaseModel](
@@ -39,7 +44,7 @@ class GeminiWrapper:
         prompt: str,
         timeout: int
     ) -> httpx.Response:
-        # Generate 
+        """Send one structured-generation request to Gemini."""
         data = {
             "systemInstruction": {
                 "parts": [{
@@ -72,6 +77,7 @@ class GeminiWrapper:
         config: CharacterConfig[T],
         prompt: str
     ) -> T:
+        """Retry a structured generation call and rotate API keys on rate limits."""
         time_taken: int = 0
         for i in range(3):
             resp = await self._generate(config, prompt, self.timeout - time_taken)
@@ -96,4 +102,5 @@ class GeminiWrapper:
         raise httpx.HTTPError("Unreachable")
 
     async def close(self):
+        """Close the shared async HTTP client during app shutdown."""
         return await self.client.aclose()

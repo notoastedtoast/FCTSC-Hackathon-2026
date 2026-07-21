@@ -12,10 +12,12 @@ from .schema import Analysis
 
 type Parameters = Sequence[Any] | Mapping[str, Any]
 
+# Keep only a small, replayable history per browser session.
 MAX_HISTORY_PER_SESSION = 10
 
 
 class HistoryEntry(TypedDict):
+    """Shape returned to the API layer for one saved history item."""
     id: str
     message: str
     analysis: dict[str, Any]
@@ -32,6 +34,7 @@ class AsyncSQLite:
         self._lock = asyncio.Lock()
 
     async def connect(self) -> Self:
+        """Open the SQLite connection lazily on first use."""
         if self.connection is None:
             self.connection = await asyncio.to_thread(
                 sqlite3.connect,
@@ -41,6 +44,7 @@ class AsyncSQLite:
         return self
 
     def _get_connection(self) -> sqlite3.Connection:
+        """Fail fast when a query is attempted before connect()."""
         if self.connection is None:
             raise RuntimeError("Database is not connected")
         return self.connection
@@ -68,6 +72,7 @@ class AsyncSQLite:
         query: str,
         parameters: Parameters = (),
     ) -> list[tuple[Any, ...]]:
+        """Fetch rows through the same lock used by writes."""
         connection = self._get_connection()
         async with self._lock:
             cursor = await asyncio.to_thread(
@@ -80,11 +85,13 @@ class AsyncSQLite:
             return rows
 
     async def commit(self) -> None:
+        """Commit the current transaction from the event loop safely."""
         connection = self._get_connection()
         async with self._lock:
             await asyncio.to_thread(connection.commit)
 
     async def close(self) -> None:
+        """Close the shared SQLite connection cleanly."""
         if self.connection is not None:
             async with self._lock:
                 await asyncio.to_thread(self.connection.close)
@@ -104,6 +111,7 @@ CREATE INDEX IF NOT EXISTS history_session_id
 ON history (session_id, id DESC);
 """
 
+# Prepared SQL strings keep route code simple and avoid inline SQL duplication.
 INSERT_HISTORY = """
 INSERT INTO history (public_id, session_id, message, analysis)
 VALUES (?, ?, ?, ?)
@@ -142,6 +150,7 @@ class HistoryDatabase(AsyncSQLite):
     """Persistent, session-scoped analysis history."""
 
     async def connect(self) -> Self:
+        """Open SQLite and ensure the history table exists."""
         await super().connect()
         connection = self._get_connection()
         async with self._lock:
@@ -155,6 +164,7 @@ class HistoryDatabase(AsyncSQLite):
         message: str,
         analysis: Analysis,
     ) -> str:
+        """Save one finished analysis and trim the session to the latest entries."""
         connection = self._get_connection()
         history_id = str(uuid4())
 
@@ -174,6 +184,7 @@ class HistoryDatabase(AsyncSQLite):
         return history_id
 
     async def get_history(self, session_id: str) -> list[HistoryEntry]:
+        """Return newest-first history for a single browser session."""
         rows = await self.fetchall(
             SELECT_HISTORY,
             (session_id,),
@@ -190,6 +201,7 @@ class HistoryDatabase(AsyncSQLite):
         ]
 
     async def get_history_item(self, history_id: str) -> HistoryEntry | None:
+        """Return one history row or None when it does not exist."""
         rows = await self.fetchall(SELECT_HISTORY_ITEM, (history_id,))
         if not rows:
             return None
@@ -203,10 +215,12 @@ class HistoryDatabase(AsyncSQLite):
         }
 
     async def save_guide_output(self, history_id: str, guide_output: str) -> None:
+        """Attach the generated calming guide to an existing history record."""
         await self.execute(UPDATE_HISTORY_GUIDE, (guide_output, history_id))
         await self.commit()
 
     async def delete_history(self, session_id: str, history_id: str) -> bool:
+        """Delete one item only if the session owns it."""
         deleted = await self.execute(DELETE_HISTORY, (history_id, session_id))
         await self.commit()
         return deleted > 0

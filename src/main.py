@@ -1,3 +1,10 @@
+"""FastAPI entrypoint for ScamCheck.
+
+This file stays intentionally small: it wires together the frontend router,
+Gemini client, session-scoped call counting, and the few public routes used by
+the browser client.
+"""
+
 from typing import Annotated
 from uuid import UUID, uuid4
 from contextlib import asynccontextmanager
@@ -24,6 +31,7 @@ logger = logging.getLogger(__name__)
 # .env must not crash the serverless startup path.
 load_dotenv(override=True)
 
+# Build long-lived application services once at import time.
 settings = Settings.from_environment()
 database = HistoryDatabase(":memory:")
 client = GeminiWrapper.from_settings(settings)
@@ -31,6 +39,7 @@ session_call_counts: dict[str, int] = {}
 
 
 def get_client() -> GeminiWrapper:
+    """Expose the shared Gemini wrapper through FastAPI dependency injection."""
     return client
 
 
@@ -38,6 +47,7 @@ ClientDep = Annotated[GeminiWrapper, Depends(get_client)]
 
 
 def consume_ai_call(response: Response, session_id: str | None) -> str:
+    """Claim one provider-call slot for the current browser session."""
     if session_id is None:
         session_id = str(uuid4())
         response.set_cookie("session_id", session_id, httponly=True, samesite="lax")
@@ -50,6 +60,7 @@ def consume_ai_call(response: Response, session_id: str | None) -> str:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    """Open storage on startup and close network/database resources on shutdown."""
     await database.connect()
     try:
         yield
@@ -69,6 +80,7 @@ async def analyze(
     data: Annotated[str, Body(...)],
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> Analysis:
+    """Run one scam analysis and save the completed result in session history."""
     session_id = consume_ai_call(response, session_id)
     deterministic_result = await check_message(data)
 
@@ -98,6 +110,7 @@ async def guide(
     client: ClientDep,
     history_id: Annotated[UUID, Body(...)],
 ) -> GuideOutput | Response:
+    """Generate and cache the optional calming guide for a saved analysis."""
     item = await database.get_history_item(str(history_id))
     if item is None:
         raise HTTPException(404, "History item not found")
@@ -122,6 +135,7 @@ async def guide(
 async def history(
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> list[HistoryEntry]:
+    """Return the current session's saved online history entries."""
     if session_id is None:
         return []
     return await database.get_history(session_id)
@@ -129,6 +143,7 @@ async def history(
 
 @app.get("/history/{history_id}")
 async def history_item(history_id: UUID) -> HistoryEntry:
+    """Return one saved history item by its public UUID."""
     item = await database.get_history_item(str(history_id))
     if item is None:
         raise HTTPException(404, "History item not found")
@@ -140,6 +155,7 @@ async def delete_history(
     history_id: UUID,
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> None:
+    """Delete one history item only when it belongs to the active session."""
     if session_id is None:
         raise HTTPException(401, "Session ID is required")
     if not await database.delete_history(session_id, str(history_id)):
