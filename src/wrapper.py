@@ -1,5 +1,3 @@
-from functools import lru_cache
-
 from pydantic import BaseModel
 import httpx
 import logging
@@ -9,7 +7,7 @@ import asyncio
 
 from .schema import CharacterConfig, Settings
 
-MAX_TOKENS = 1000
+MAX_TOKENS = 500
 DELAY = 1
 DELIMITER = "\n----------\n"
 logger = logging.getLogger(__name__)
