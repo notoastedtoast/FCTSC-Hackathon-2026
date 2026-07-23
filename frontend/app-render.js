@@ -57,13 +57,14 @@ function qrReedSolomonRemainder(data,divisor){
   return result;
 }
 
-function createProductQrMatrix(){
-  // Version 3-L is large enough for the fixed 40-byte product URL.
-  const version=3,size=version*4+17,dataCodewords=55,errorCodewords=15;
+function createQrMatrix(value=SHARE_PRODUCT_URL){
+  // Version 5-L accommodates a public result URL with its 36-character UUID.
+  const version=5,size=version*4+17,dataCodewords=108,errorCodewords=26;
+  if(value.length>106)throw new Error('QR value is too long');
   const bits=[];
   qrAppendBits(0x4,4,bits);
-  qrAppendBits(SHARE_PRODUCT_URL.length,8,bits);
-  Array.from(SHARE_PRODUCT_URL).forEach(character=>qrAppendBits(character.charCodeAt(0),8,bits));
+  qrAppendBits(value.length,8,bits);
+  Array.from(value).forEach(character=>qrAppendBits(character.charCodeAt(0),8,bits));
   const capacity=dataCodewords*8;
   qrAppendBits(0,Math.min(4,capacity-bits.length),bits);
   while(bits.length%8!==0)bits.push(0);
@@ -98,11 +99,9 @@ function createProductQrMatrix(){
       }
     }
   });
-  for(let deltaY=-2;deltaY<=2;deltaY++){
-    for(let deltaX=-2;deltaX<=2;deltaX++){
-      const distance=Math.max(Math.abs(deltaX),Math.abs(deltaY));
-      setFunction(22+deltaX,22+deltaY,distance!==1);
-    }
+  for(let deltaY=-2;deltaY<=2;deltaY++)for(let deltaX=-2;deltaX<=2;deltaX++){
+    const distance=Math.max(Math.abs(deltaX),Math.abs(deltaY));
+    setFunction(30+deltaX,30+deltaY,distance!==1);
   }
   const formatData=(1<<3)|0;
   let formatRemainder=formatData;
@@ -274,8 +273,8 @@ function drawShareAvatar(context,image,x,y,size){
   context.stroke();
 }
 
-function drawProductQr(context,x,y,pixelSize){
-  const matrix=createProductQrMatrix();
+function drawQr(context,x,y,pixelSize,value){
+  const matrix=createQrMatrix(value);
   const quietZone=4;
   const moduleSize=Math.floor(pixelSize/(matrix.length+quietZone*2));
   const qrSize=moduleSize*(matrix.length+quietZone*2);
@@ -296,6 +295,12 @@ function drawProductQr(context,x,y,pixelSize){
       }
     });
   });
+}
+
+function resultShareUrl(id){
+  return /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(id||''))
+    ?new URL(`#result/${id}`,SHARE_PRODUCT_URL).href
+    :SHARE_PRODUCT_URL;
 }
 
 function resultShareSummary(originalText,payload){
@@ -349,7 +354,8 @@ function resultShareSummary(originalText,payload){
     signs:uniqueSigns,
     actions:defaultActions.map((fallback,index)=>
       normalizeShareText(detective.actions?.[index]||fallback)
-    )
+    ),
+    resultUrl:resultShareUrl(payload?.id)
   };
 }
 
@@ -552,14 +558,14 @@ async function createResultShareCanvas(summary){
   setShareCanvasFont(context,500,22);
   drawCanvasLines(
     context,
-    'Quét mã ở góc để mở ScamCheck.',
+    'Quét mã ở góc để mở kết quả này.',
     92,footerTop+101,600,30,2
   );
   context.fillStyle='#ffffff';
   setShareCanvasFont(context,700,20);
   context.fillText('fctsc-hackathon-2026.vercel.app',92,footerTop+145);
   drawRoundedRectangle(context,846,footerTop+17,154,154,13,'#ffffff');
-  drawProductQr(context,850,footerTop+21,146);
+  drawQr(context,850,footerTop+21,146,summary.resultUrl);
 
   context.fillStyle='#526a80';
   setShareCanvasFont(context,600,18);
@@ -572,13 +578,13 @@ async function createResultShareCanvas(summary){
   return canvas;
 }
 
-function createCaptureQrCanvas(){
+function createCaptureQrCanvas(value){
   const canvas=document.createElement('canvas');
   canvas.width=90;
   canvas.height=90;
   const context=canvas.getContext('2d');
   if(!context)throw new Error('Canvas is unavailable');
-  drawProductQr(context,0,0,90);
+  drawQr(context,0,0,90,value);
   return canvas;
 }
 
@@ -617,7 +623,7 @@ function createDetectiveCaptureNode(){
   logo.src='/scamcheck-logo.png';
   logo.alt='';
   logo.width=145;
-  const qr=createCaptureQrCanvas();
+  const qr=createCaptureQrCanvas(currentShareSummary?.resultUrl);
   qr.setAttribute('aria-hidden','true');
   footer.append(logo,qr);
   shell.append(detective,footer);

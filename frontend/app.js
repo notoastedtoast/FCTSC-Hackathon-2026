@@ -726,12 +726,23 @@ function setPracticeAnswersDisabled(disabled){
   practiceAnswerButtons.forEach(button=>{button.disabled=disabled});
 }
 
+function shuffledPracticePrompts(){
+  const prompts=[...practicePrompts];
+  for(let index=prompts.length-1;index>0;index-=1){
+    const swapIndex=Math.floor(Math.random()*(index+1));
+    [prompts[index],prompts[swapIndex]]=[prompts[swapIndex],prompts[index]];
+  }
+  return prompts;
+}
+
+let practiceQuestions=shuffledPracticePrompts();
+
 function renderPracticePrompt(){
-  const prompt=practicePrompts[practiceIndex];
+  const prompt=practiceQuestions[practiceIndex];
   practiceLocked=false;
   practiceContent.hidden=false;
   practiceMessage.textContent=prompt.text;
-  practiceProgress.textContent=`Câu ${practiceIndex+1}/${practicePrompts.length}`;
+  practiceProgress.textContent=`Câu ${practiceIndex+1}/${practiceQuestions.length}`;
   practiceScore.textContent=`Điểm ${practiceCorrect}/${practiceAnswered}`;
   practiceFeedback.hidden=true;
   practiceFeedback.textContent='';
@@ -745,7 +756,7 @@ function renderPracticePrompt(){
 
 function submitPracticeAnswer(answer,selectedButton){
   if(practiceLocked)return;
-  const prompt=practicePrompts[practiceIndex];
+  const prompt=practiceQuestions[practiceIndex];
   practiceLocked=true;
   setPracticeAnswersDisabled(true);
   practiceFeedback.hidden=true;
@@ -767,7 +778,7 @@ function submitPracticeAnswer(answer,selectedButton){
     :`Chưa đúng. Đáp án là ${answerLabel}. ${prompt.reason}`;
   practiceFeedback.className=`practice-feedback ${isCorrect?'correct':'incorrect'}`;
   practiceFeedback.hidden=false;
-  practiceNextButton.textContent=practiceIndex===practicePrompts.length-1
+  practiceNextButton.textContent=practiceIndex===practiceQuestions.length-1
     ?'Làm lại từ đầu'
     :'Câu tiếp theo →';
   practiceNextButton.hidden=false;
@@ -875,10 +886,11 @@ practiceAnswerButtons.forEach(button=>button.addEventListener('click',()=>{
   submitPracticeAnswer(button.dataset.answer,button);
 }));
 practiceNextButton.addEventListener('click',()=>{
-  if(practiceIndex===practicePrompts.length-1){
+  if(practiceIndex===practiceQuestions.length-1){
     practiceIndex=0;
     practiceCorrect=0;
     practiceAnswered=0;
+    practiceQuestions=shuffledPracticePrompts();
   }else{
     practiceIndex+=1;
   }

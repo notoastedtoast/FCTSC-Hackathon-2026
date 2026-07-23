@@ -179,6 +179,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), output.model_dump())
         self.assertIn("1900545413", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertIn('"police_hotline": "113"', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
         self.assertIn('"selected_bank": "Vietcombank"', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
         self.assertNotIn("19009247", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
         self.assertNotIn("999", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])

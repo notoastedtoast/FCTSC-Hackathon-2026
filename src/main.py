@@ -186,7 +186,7 @@ async def responder(client: ClientDep, data: ResponderRequest) -> ResponderOutpu
 
     hotlines = {name: number for name, number in data.hotlines.items() if TELEPHONES.get(name) == number}
     bank = data.bank if data.bank in hotlines else None
-    context = json.dumps({"choice": data.choice, "analysis": stored.analysis.model_dump(), "hotlines": hotlines, "selected_bank": bank}, ensure_ascii=False)
+    context = json.dumps({"choice": data.choice, "analysis": stored.analysis.model_dump(), "hotlines": hotlines, "police_hotline": TELEPHONES["Công an"], "selected_bank": bank}, ensure_ascii=False)
 
     try:
         output = await client.generate(RESPONDER, context)
