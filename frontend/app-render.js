@@ -602,11 +602,6 @@ function createDetectiveCaptureNode(){
   const detective=source.cloneNode(true);
   detective.classList.add('result-image-capture');
   detective.querySelectorAll('[id]').forEach(element=>element.removeAttribute('id'));
-  detective.querySelectorAll('.message-revealing,.message-streaming').forEach(element=>{
-    element.classList.remove('message-revealing','message-streaming');
-    element.removeAttribute('aria-busy');
-  });
-
   const messageList=query('.detective-message-list',detective);
   if(!messageList)throw new Error('Detective messages are unavailable');
   const rows=[...messageList.querySelectorAll('.detective-message-row')];
@@ -845,7 +840,8 @@ function revealPostAnalysisQuestion(){
 }
 
 function revealPsychologyMessages(){
-  if(psychologyMessage.childElementCount===0)return;
+  if(!detectiveSequenceComplete||!psychologyReady||psychologyMessage.childElementCount===0)return;
+  psychologyReady=false;
   actionSection.hidden=false;
   psychologyBlock.hidden=false;
   revealRowsSequentially(
@@ -856,9 +852,12 @@ function revealPsychologyMessages(){
 
 function playMessageSequence(){
   clearMessageRevealTimers();
+  detectiveSequenceComplete=false;
+  psychologyReady=psychologyMessage.childElementCount>0;
   revealRowsSequentially(
     signalList.querySelectorAll('.detective-message-row'),
     {onComplete:()=>{
+      detectiveSequenceComplete=true;
       downloadResultImageButton.disabled=false;
       resultImageStatus.textContent='';
       revealPsychologyMessages();
@@ -1029,7 +1028,7 @@ function renderPsychology(payload){
   });
   actionSection.hidden=true;
   psychologyBlock.hidden=true;
-  if(!shouldShow){
+  if(!shouldShow||payload.character_pending){
     return;
   }
   let message;
@@ -1067,6 +1066,13 @@ function renderResponderGuidance(choice,riskLevel){
   responderSteps.replaceChildren(...items);
   responderBlock.hidden=false;
   revealRowsSequentially(items);
+}
+
+function completeResultFrame(text,payload){
+  renderPsychology(payload);
+  currentShareSummary=resultShareSummary(text,payload);
+  psychologyReady=psychologyMessage.childElementCount>0;
+  revealPsychologyMessages();
 }
 
 function showResultFrame(text,payload,{fromHistory=false}={}){
