@@ -372,6 +372,49 @@ function writeOfflineHistory(entries){
   }
 }
 
+function readOnlineHistory(){
+  try{
+    const parsed=JSON.parse(localStorage.getItem(ONLINE_HISTORY_KEY)||'[]');
+    return Array.isArray(parsed)?parsed.slice(0,MAX_ONLINE_HISTORY):[];
+  }catch(error){
+    return [];
+  }
+}
+
+function writeOnlineHistory(entries){
+  try{
+    localStorage.setItem(ONLINE_HISTORY_KEY,JSON.stringify(entries.slice(0,MAX_ONLINE_HISTORY)));
+  }catch(error){
+    return;
+  }
+}
+
+function mergeHistoryEntries(...groups){
+  const merged=new Map();
+  groups.flat().forEach(item=>{
+    if(!item?.id)return;
+    const current=merged.get(item.id);
+    if(!current||new Date(item.date||0).getTime()>=new Date(current.date||0).getTime()){
+      merged.set(item.id,item);
+    }
+  });
+  return [...merged.values()]
+    .sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+}
+
+function saveOnlineHistoryEntry(entry){
+  if(!entry?.id)return entry;
+  const normalized={...entry,offline:false,result:entry.result?{...entry.result,id:String(entry.id),offline:false}:entry.result};
+  const saved=mergeHistoryEntries([normalized],readOnlineHistory()).slice(0,MAX_ONLINE_HISTORY);
+  writeOnlineHistory(saved);
+  historyCache=mergeHistoryEntries(saved,readOfflineHistory());
+  return normalized;
+}
+
+function readSavedHistoryItem(historyId){
+  return mergeHistoryEntries(readOnlineHistory(),readOfflineHistory()).find(item=>item.id===historyId)||null;
+}
+
 function saveOfflineHistory(message,result){
   const entry={
     id:`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -391,22 +434,23 @@ async function loadHistory(){
   loading.textContent='Đang tải lịch sử…';
   historyList.appendChild(loading);
   const offlineEntries=readOfflineHistory();
+  const onlineEntries=readOnlineHistory();
   if(isOffline){
-    historyCache=offlineEntries;
+    historyCache=mergeHistoryEntries(onlineEntries,offlineEntries);
     renderHistory();
     return;
   }
   try{
     const entries=await requestJson('/history/');
-    const onlineEntries=Array.isArray(entries)?entries.map(backendHistoryToItem):[];
-    historyCache=[...onlineEntries,...offlineEntries].sort(
-      (a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime()
-    );
+    const refreshedEntries=Array.isArray(entries)?entries.map(backendHistoryToItem):[];
+    const savedOnlineEntries=mergeHistoryEntries(refreshedEntries,onlineEntries).slice(0,MAX_ONLINE_HISTORY);
+    writeOnlineHistory(savedOnlineEntries);
+    historyCache=mergeHistoryEntries(savedOnlineEntries,offlineEntries);
     renderHistory();
   }catch(error){
-    historyCache=offlineEntries;
+    historyCache=mergeHistoryEntries(onlineEntries,offlineEntries);
     renderHistory();
-    if(!offlineEntries.length)historyList.firstChild.textContent='Không thể tải lịch sử lúc này.';
+    if(!onlineEntries.length&&!offlineEntries.length)historyList.firstChild.textContent='Không thể tải lịch sử lúc này.';
   }
 }
 
@@ -579,6 +623,9 @@ async function confirmDeleteSelectedHistory(){
     if(offlineIds.size){
       writeOfflineHistory(readOfflineHistory().filter(item=>!offlineIds.has(item.id)));
     }
+    if(onlineIds.length){
+      writeOnlineHistory(readOnlineHistory().filter(item=>!onlineIds.includes(item.id)));
+    }
     selectedHistoryIds.clear();
     deleteConfirmModal.classList.remove('open');
     deleteConfirmModal.setAttribute('aria-hidden','true');
@@ -662,7 +709,14 @@ async function prepareOnlineResult(submittedText,analysisResult){
     const history=await requestJson('/history/');
     entries=Array.isArray(history)?history:[];
   }catch(error){
-    return backendAnalysisToPayload(analysisResult,{guideUnavailable:needsGuide});
+    const fallback=backendAnalysisToPayload(analysisResult,{guideUnavailable:needsGuide});
+    return saveOnlineHistoryEntry({
+      id:String(fallback.id||`online-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      message:submittedText,
+      date:new Date().toISOString(),
+      result:fallback,
+      offline:false
+    }).result;
   }
 
   const entry=entries.find(item=>item?.message===submittedText)||entries[0];
@@ -687,7 +741,13 @@ async function prepareOnlineResult(submittedText,analysisResult){
     payload.id=String(entry.id||'');
     payload.date=String(entry.created_at||new Date().toISOString());
   }
-  return payload;
+  return saveOnlineHistoryEntry({
+    id:String(payload.id||entry?.id||`online-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    message:submittedText,
+    date:String(payload.date||entry?.created_at||new Date().toISOString()),
+    result:{...payload,responder_output:entry?.responder_output||payload.responder_output||null},
+    offline:false
+  }).result;
 }
 
 function applyUsage(aiUsage){
@@ -793,6 +853,13 @@ async function generateResponder(choice,hotlines,bank=null){
     const output=await requestJson('/responder/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history_id:postAnalysisQuestion.dataset.analysisId,choice,hotlines,bank})});
     if(!bank&&output.needs_bank&&askForBank(choice,hotlines))return;
     bankQuestion.hidden=true;
+    const historyId=String(postAnalysisQuestion.dataset.analysisId||'');
+    if(historyId){
+      const saved=readSavedHistoryItem(historyId);
+      if(saved?.result){
+        saveOnlineHistoryEntry({...saved,result:{...saved.result,responder_output:output}});
+      }
+    }
     renderResponderGuidance(output.steps);
   }catch(error){showFeedback('Chưa thể tải các bước ứng cứu. Bác hãy thử lại sau.');}
 }
@@ -1154,12 +1221,8 @@ function syncLibraryRoute(){
 
 async function showResultRoute(resultId){
   try{
-    const offlineEntry=resultId.startsWith('offline-')
-      ?readOfflineHistory().find(item=>item.id===resultId)
-      :null;
-    const item=offlineEntry||backendHistoryToItem(await requestJson(
-      `/history/${encodeURIComponent(resultId)}`
-    ));
+    const savedItem=readSavedHistoryItem(resultId);
+    const item=savedItem||backendHistoryToItem(await requestJson(`/history/${encodeURIComponent(resultId)}`));
     if(!item?.result)throw new Error('Saved result not found');
     const route=routeFromHash();
     if(route.view!=='result'||route.resultId!==resultId)return;

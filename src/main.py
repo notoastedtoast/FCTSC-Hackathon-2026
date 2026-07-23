@@ -39,6 +39,7 @@ settings = Settings.from_environment()
 database = HistoryDatabase(":memory:")
 client = GeminiWrapper.from_settings(settings)
 CALL_COUNT_COOKIE = "ai_call_count"
+COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 
 
 async def ensure_database_ready() -> None:
@@ -74,7 +75,7 @@ def _call_count(session_id: str, cookie: str | None) -> int:
 def consume_ai_call(response: Response, session_id: str | None, cookie: str | None) -> str:
     if session_id is None:
         session_id = str(uuid4())
-        response.set_cookie("session_id", session_id, httponly=True, samesite="lax")
+        response.set_cookie("session_id", session_id, httponly=True, samesite="lax", max_age=COOKIE_MAX_AGE)
     calls = _call_count(session_id, cookie)
     if calls >= settings.ai_session_call_limit:
         raise HTTPException(429, "AI session call limit reached")
@@ -85,7 +86,7 @@ def consume_ai_call(response: Response, session_id: str | None, cookie: str | No
         hashlib.sha256,
     ).hexdigest()
     response.set_cookie(
-        CALL_COUNT_COOKIE, f"{calls}.{signature}", httponly=True, samesite="lax"
+        CALL_COUNT_COOKIE, f"{calls}.{signature}", httponly=True, samesite="lax", max_age=COOKIE_MAX_AGE
     )
     return session_id
 
