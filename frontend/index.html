@@ -14,7 +14,20 @@
         <div class="brand-mark">
           <img class="logo" src="./scamcheck-logo.png" alt="ScamCheck" />
         </div>
-        <p class="header-note">Bình tĩnh kiểm tra trước khi hành động</p>
+        <div class="header-tools">
+          <p class="header-note">Bình tĩnh kiểm tra trước khi hành động</p>
+          <div class="display-preferences" role="group" aria-label="Tùy chọn hiển thị">
+            <button id="contrast-toggle" class="display-preference-button" type="button" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20V2Zm-2 17.7A8 8 0 0 1 10 4.3v15.4Z"/></svg>
+              <span>Tương phản</span>
+            </button>
+            <button id="font-size-toggle" class="display-preference-button" type="button" aria-pressed="false">
+              <span class="font-size-icon" aria-hidden="true">A<small>A</small></span>
+              <span>Chữ lớn</span>
+            </button>
+          </div>
+          <p id="display-preference-status" class="visually-hidden" role="status" aria-live="polite"></p>
+        </div>
       </div>
 
       <nav class="top-nav" aria-label="Điều hướng chính">
@@ -52,18 +65,16 @@
 
         <div class="analysis-workspace">
           <section class="composer-card" aria-labelledby="composer-title">
-            <div class="card-heading">
-              <div>
+            <div class="card-heading composer-heading">
+              <div class="composer-title-copy">
                 <h2 id="composer-title">Nội dung cần kiểm tra</h2>
                 <p>Email, SMS hoặc tin nhắn trò chuyện</p>
               </div>
+              <div id="usage" class="usage usage-badge" aria-live="polite">Số lượt phân tích còn lại: 10 lần</div>
             </div>
 
             <div class="input-wrap">
               <textarea id="message" class="message-input" maxlength="10000" aria-describedby="message-feedback character-count voice-status" placeholder="Dán nguyên văn tin nhắn vào đây…"></textarea>
-              <button id="clear-button" class="clear-button" type="button" aria-label="Xóa nội dung" title="Xóa nội dung" disabled>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-              </button>
               <button id="voice-button" class="voice-button" type="button" aria-pressed="false" title="Bật micro">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21H8v2h8v-2h-3v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
                 <span id="voice-button-label" class="visually-hidden">Bật micro</span>
@@ -85,11 +96,6 @@
           </section>
 
           <aside class="tools-column" aria-label="Công cụ nhập liệu">
-            <section class="tool-card usage-card">
-              <p class="tool-label">Trạng thái phiên</p>
-              <div id="usage" class="usage" aria-live="polite">Đang tải số lượt AI đã dùng trong phiên…</div>
-            </section>
-
             <section class="tool-card sample-card">
               <div class="tool-card-heading">
                 <div>

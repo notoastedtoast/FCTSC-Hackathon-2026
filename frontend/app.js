@@ -3,6 +3,95 @@
    app-render.js. This file keeps the routing, API calls, and event wiring. */
 
 
+function readDisplayPreferences(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(DISPLAY_PREFERENCES_KEY)||'{}');
+    return {
+      highContrast:saved.highContrast===true,
+      largeText:saved.largeText===true
+    };
+  }catch(error){
+    return {highContrast:false,largeText:false};
+  }
+}
+
+function applyDisplayPreferences(preferences,{announce=false}={}){
+  document.documentElement.toggleAttribute('data-high-contrast',preferences.highContrast);
+  document.documentElement.toggleAttribute('data-large-text',preferences.largeText);
+  contrastToggle.setAttribute('aria-pressed',String(preferences.highContrast));
+  fontSizeToggle.setAttribute('aria-pressed',String(preferences.largeText));
+  contrastToggle.setAttribute('aria-label',`${preferences.highContrast?'Tắt':'Bật'} chế độ tương phản cao`);
+  fontSizeToggle.setAttribute('aria-label',`${preferences.largeText?'Tắt':'Bật'} chế độ chữ lớn`);
+  if(announce){
+    const enabled=[];
+    if(preferences.highContrast)enabled.push('tương phản cao');
+    if(preferences.largeText)enabled.push('chữ lớn');
+    displayPreferenceStatus.textContent=enabled.length
+      ?`Đã bật ${enabled.join(' và ')}.`
+      :'Đã dùng chế độ hiển thị mặc định.';
+  }
+}
+
+function saveDisplayPreferences(preferences){
+  try{
+    localStorage.setItem(DISPLAY_PREFERENCES_KEY,JSON.stringify(preferences));
+  }catch(error){
+    // The current choice still applies when browser storage is unavailable.
+  }
+}
+
+let displayPreferences=readDisplayPreferences();
+applyDisplayPreferences(displayPreferences);
+contrastToggle.addEventListener('click',()=>{
+  displayPreferences={...displayPreferences,highContrast:!displayPreferences.highContrast};
+  applyDisplayPreferences(displayPreferences,{announce:true});
+  saveDisplayPreferences(displayPreferences);
+});
+fontSizeToggle.addEventListener('click',()=>{
+  displayPreferences={...displayPreferences,largeText:!displayPreferences.largeText};
+  applyDisplayPreferences(displayPreferences,{announce:true});
+  saveDisplayPreferences(displayPreferences);
+});
+window.addEventListener('storage',event=>{
+  if(event.key!==DISPLAY_PREFERENCES_KEY)return;
+  displayPreferences=readDisplayPreferences();
+  applyDisplayPreferences(displayPreferences);
+});
+
+function renderRemainingAnalyses(){
+  usage.textContent=`Số lượt phân tích còn lại: ${remainingAnalyses} lần`;
+}
+
+function saveRemainingAnalyses(){
+  try{
+    sessionStorage.setItem(ANALYSIS_REMAINING_KEY,String(remainingAnalyses));
+  }catch(error){
+    // Keep the in-memory counter when tab storage is unavailable.
+  }
+}
+
+function restoreRemainingAnalyses(){
+  try{
+    const storedValue=sessionStorage.getItem(ANALYSIS_REMAINING_KEY);
+    const saved=storedValue===null?ANALYSIS_LIMIT:Number(storedValue);
+    if(Number.isInteger(saved)&&saved>=0&&saved<=ANALYSIS_LIMIT){
+      remainingAnalyses=saved;
+    }
+  }catch(error){
+    remainingAnalyses=ANALYSIS_LIMIT;
+  }
+  sessionAtLimit=remainingAnalyses===0;
+  renderRemainingAnalyses();
+}
+
+function decrementRemainingAnalyses(){
+  if(isOffline||remainingAnalyses===0)return;
+  remainingAnalyses=Math.max(0,remainingAnalyses-1);
+  sessionAtLimit=remainingAnalyses===0;
+  saveRemainingAnalyses();
+  renderRemainingAnalyses();
+}
+
 // Move quick sample cards below the main submit button on small screens.
 function syncQuickInputLayout(){
   if(mobileLayoutQuery.matches){
@@ -124,6 +213,61 @@ function clearMessageRevealTimers(){
   messageRevealTimers=[];
 }
 
+function streamMessageContent(message,onComplete){
+  const walker=document.createTreeWalker(message,NodeFilter.SHOW_TEXT);
+  const textNodes=[];
+  let node=walker.nextNode();
+  while(node){
+    const parent=node.parentElement;
+    if(
+      node.nodeValue?.trim()
+      &&!parent?.closest('[aria-hidden="true"]')
+      &&!parent?.closest('.original-message')
+    ){
+      textNodes.push({node,text:node.nodeValue});
+    }
+    node=walker.nextNode();
+  }
+
+  const units=[];
+  textNodes.forEach(entry=>{
+    entry.node.nodeValue='';
+    const chunks=entry.text.match(/\S+\s*|\s+/g)||[entry.text];
+    chunks.forEach(text=>units.push({node:entry.node,text}));
+  });
+  if(units.length===0){
+    onComplete();
+    return;
+  }
+
+  const unitsPerTick=Math.max(1,Math.ceil(units.length/MESSAGE_STREAM_MAX_STEPS));
+  let cursor=0;
+  let tickCount=0;
+  message.classList.add('message-streaming');
+  message.setAttribute('aria-busy','true');
+
+  const revealNextChunk=()=>{
+    const stop=Math.min(units.length,cursor+unitsPerTick);
+    while(cursor<stop){
+      const unit=units[cursor];
+      unit.node.nodeValue+=unit.text;
+      cursor+=1;
+    }
+    tickCount+=1;
+    if(tickCount%4===0||cursor>=units.length)revealResultMessage(message);
+    if(cursor>=units.length){
+      message.classList.remove('message-streaming');
+      message.setAttribute('aria-busy','false');
+      onComplete();
+      return;
+    }
+    const timer=window.setTimeout(revealNextChunk,MESSAGE_STREAM_CHUNK_MS);
+    messageRevealTimers.push(timer);
+  };
+
+  revealNextChunk();
+}
+
 function revealRowsSequentially(rows,{onComplete=null}={}){
   const messages=[...rows];
   const reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -140,22 +284,29 @@ function revealRowsSequentially(rows,{onComplete=null}={}){
     if(onComplete)onComplete();
     return;
   }
-  messages.forEach((message,index)=>{
-    const timer=window.setTimeout(()=>{
-      message.hidden=false;
-      void message.offsetWidth;
-      message.classList.add('message-revealing');
-      revealResultMessage(message);
-      if(index===messages.length-1&&onComplete){
-        const completionTimer=window.setTimeout(
-          onComplete,
-          CHARACTER_MESSAGE_GAP_MS
-        );
-        messageRevealTimers.push(completionTimer);
+
+  let index=0;
+  const revealNextMessage=()=>{
+    if(index>=messages.length){
+      if(onComplete)onComplete();
+      return;
+    }
+    const message=messages[index];
+    message.hidden=false;
+    void message.offsetWidth;
+    message.classList.add('message-revealing');
+    revealResultMessage(message);
+    streamMessageContent(message,()=>{
+      index+=1;
+      if(index>=messages.length){
+        if(onComplete)onComplete();
+        return;
       }
-    },index*CHARACTER_MESSAGE_GAP_MS);
-    messageRevealTimers.push(timer);
-  });
+      const timer=window.setTimeout(revealNextMessage,MESSAGE_STREAM_GAP_MS);
+      messageRevealTimers.push(timer);
+    });
+  };
+  revealNextMessage();
 }
 
 function showComposerFrame(){
@@ -202,7 +353,7 @@ function restoreDraft(){
     return;
   }
 }
-function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;clearButton.disabled=rawLength===0;checkButton.disabled=isAnalyzing||(!isOffline&&sessionAtLimit)||clean.length<MIN_LENGTH;if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{hideFeedback();messageInput.removeAttribute('aria-invalid')}}
+function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;checkButton.disabled=isAnalyzing||(!isOffline&&sessionAtLimit)||clean.length<MIN_LENGTH;if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{hideFeedback();messageInput.removeAttribute('aria-invalid')}}
 function setupSpeechRecognition(){const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Bạn vẫn có thể nhập hoặc dán nội dung.';return}recognition=new SpeechRecognition();recognition.lang='vi-VN';recognition.interimResults=true;recognition.continuous=true;let finalTranscript='';recognition.onstart=()=>{isRecording=true;finalTranscript='';voiceButton.classList.add('recording');voiceButton.setAttribute('aria-pressed','true');voiceButton.title='Tắt micro';voiceButtonLabel.textContent='Tắt micro';voiceStatus.textContent='Đang ghi âm… Hãy đọc rõ nội dung tin nhắn.'};recognition.onresult=(event)=>{let interimTranscript='';for(let i=event.resultIndex;i<event.results.length;i++){const transcript=event.results[i][0].transcript;if(event.results[i].isFinal)finalTranscript+=transcript+' ';else interimTranscript+=transcript}const combined=`${finalTranscript}${interimTranscript}`.trim();if(combined){const base=messageInput.dataset.beforeVoice||'';messageInput.value=base?`${base} ${combined}`:combined;messageInput.dispatchEvent(new Event('input'))}};recognition.onerror=(event)=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(event.error==='not-allowed'||event.error==='service-not-allowed')voiceStatus.textContent='Không thể dùng micro vì quyền truy cập đã bị từ chối. Bạn vẫn có thể nhập nội dung bằng bàn phím.';else if(event.error==='no-speech')voiceStatus.textContent='Chưa nhận được giọng nói. Vui lòng thử lại và nói gần micro hơn.';else voiceStatus.textContent='Tính năng giọng nói tạm thời chưa hoạt động. Vui lòng nhập nội dung thủ công.'};recognition.onend=()=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(!voiceStatus.textContent.includes('từ chối')&&!voiceStatus.textContent.includes('tạm thời')&&!voiceStatus.textContent.includes('Chưa nhận'))voiceStatus.textContent='Đã dừng ghi âm.';delete messageInput.dataset.beforeVoice}}
 function getHistory(){
   return historyCache;
@@ -549,11 +700,7 @@ async function requestJson(path,options={}){
 }
 
 async function loadUsageCompat(){
-  usage.textContent=isOffline
-    ?'Đang ngoại tuyến. Phân tích sơ bộ trên thiết bị không dùng lượt AI.'
-    :sessionAtLimit
-      ?'Phiên này đã chạm giới hạn kiểm tra AI.'
-      :'Mỗi lần kiểm tra trực tuyến sử dụng một lượt AI của phiên.';
+  renderRemainingAnalyses();
 }
 
 async function prepareOnlineResult(submittedText,analysisResult){
@@ -595,7 +742,11 @@ function applyUsage(aiUsage){
   const used=Number(aiUsage?.used||0);
   const limit=Number(aiUsage?.limit||0);
   sessionAtLimit=limit>0&&used>=limit;
-  usage.textContent=`Đã dùng ${used}/${limit} lượt AI trong phiên này.`;
+  if(sessionAtLimit){
+    remainingAnalyses=0;
+    saveRemainingAnalyses();
+  }
+  renderRemainingAnalyses();
 }
 
 function showConnectivityNotice(message){
@@ -672,7 +823,6 @@ function submitPracticeAnswer(answer,selectedButton){
 }
 
 messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
-clearButton.addEventListener('click',()=>{messageInput.value='';saveDraft();messageInput.focus();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
 postAnalysisOptions.forEach(option=>option.addEventListener('click',()=>{
@@ -767,6 +917,7 @@ function pendingAnalysisFor(message){
 async function runAnalysis(submittedText){
   if(isAnalyzing)return;
   isAnalyzing=true;
+  decrementRemainingAnalyses();
   updateInputState();
   showProcessingFrame();
 
@@ -815,7 +966,12 @@ async function runAnalysis(submittedText){
       showConnectivityNotice('Kết nối mạng không ổn định. Bác hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại.');
       showFeedback(error.message,'info');
     }else{
-      if(error.status===429)sessionAtLimit=true;
+      if(error.status===429){
+        sessionAtLimit=true;
+        remainingAnalyses=0;
+        saveRemainingAnalyses();
+        renderRemainingAnalyses();
+      }
       if(navigator.onLine)connectivityStatus.hidden=true;
       showFeedback(Number.isInteger(error.status)?error.message:'Không thể kết nối tới máy chủ.');
     }
@@ -1030,4 +1186,4 @@ window.addEventListener('online',updateConnectivityState);
 window.addEventListener('offline',updateConnectivityState);
 window.addEventListener('hashchange',()=>syncRoute({focus:true}));
 if(!window.location.hash)window.history.replaceState(null,'','#analyze');
-restoreDraft();setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();syncRoute();
+restoreRemainingAnalyses();restoreDraft();setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();syncRoute();

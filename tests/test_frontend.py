@@ -14,6 +14,27 @@ def frontend_script_bundle(frontend: Path) -> str:
     )
 
 
+def contrast_ratio(foreground: str, background: str) -> float:
+    def relative_luminance(hex_color: str) -> float:
+        channels = [
+            int(hex_color[index : index + 2], 16) / 255
+            for index in (1, 3, 5)
+        ]
+        linear = [
+            channel / 12.92
+            if channel <= 0.04045
+            else ((channel + 0.055) / 1.055) ** 2.4
+            for channel in channels
+        ]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    foreground_luminance = relative_luminance(foreground)
+    background_luminance = relative_luminance(background)
+    lighter = max(foreground_luminance, background_luminance)
+    darker = min(foreground_luminance, background_luminance)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 class FrontendTests(unittest.TestCase):
     def test_every_required_javascript_element_exists_in_the_page(self) -> None:
         root = Path(__file__).resolve().parent.parent
@@ -78,9 +99,25 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('id="connectivity-message"', page)
         self.assertIn('id="voice-button" class="voice-button"', page)
         self.assertIn('id="voice-button-label" class="visually-hidden"', page)
+        self.assertNotIn('id="clear-button"', page)
+        self.assertNotIn("clearButton", script)
         self.assertIn('aria-pressed="false"', page)
         self.assertNotIn('class="tool-card quick-input-card"', page)
+        self.assertIn('id="composer-title">Nội dung cần kiểm tra</h2>', page)
+        self.assertIn('class="usage usage-badge"', page)
+        self.assertIn('Số lượt phân tích còn lại: 10 lần', page)
+        self.assertNotIn('Trạng thái phiên', page)
+        self.assertNotIn('usage-card', page)
         self.assertIn('class="top-nav"', page)
+        self.assertIn('id="contrast-toggle"', page)
+        self.assertIn('id="font-size-toggle"', page)
+        self.assertIn('aria-label="Tùy chọn hiển thị"', page)
+        self.assertIn("DISPLAY_PREFERENCES_KEY='scamcheck-display-preferences-v1'", script)
+        self.assertIn("localStorage.setItem(DISPLAY_PREFERENCES_KEY", script)
+        self.assertIn("data-high-contrast", styles)
+        self.assertIn("data-large-text", styles)
+        self.assertIn("toggleAttribute('data-high-contrast'", script)
+        self.assertIn("toggleAttribute('data-large-text'", script)
         self.assertIn('data-view="analyze"', page)
         self.assertIn('data-view="history"', page)
         self.assertIn('data-view="practice"', page)
@@ -124,7 +161,15 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn("/practice-messages/", script)
         self.assertIn("answer===prompt.label", script)
         self.assertIn("prompt.reason", script)
-        self.assertIn("`Đã dùng ${used}/${limit} lượt AI trong phiên này.`", script)
+        self.assertIn("ANALYSIS_LIMIT=10", script)
+        self.assertIn("ANALYSIS_REMAINING_KEY='scamcheck-analysis-remaining-v1'", script)
+        self.assertIn("function decrementRemainingAnalyses()", script)
+        self.assertIn("remainingAnalyses=Math.max(0,remainingAnalyses-1)", script)
+        self.assertIn("sessionStorage.setItem(ANALYSIS_REMAINING_KEY", script)
+        self.assertIn(
+            "`Số lượt phân tích còn lại: ${remainingAnalyses} lần`",
+            script,
+        )
         self.assertIn("sessionAtLimit", script)
         self.assertIn("statusCode===429", script)
         self.assertIn("payload.character_notice", script)
@@ -150,13 +195,21 @@ class FrontendTests(unittest.TestCase):
         ]
         self.assertIn("return card;", append_signal)
         self.assertNotIn("document.getElementById('original-message')", script)
-        self.assertIn("CHARACTER_MESSAGE_GAP_MS=1000", script)
-        self.assertNotIn("DETECTIVE_MESSAGE_GAP_MS", script)
+        self.assertIn("MESSAGE_STREAM_CHUNK_MS=55", script)
+        self.assertIn("MESSAGE_STREAM_GAP_MS=240", script)
+        self.assertIn("MESSAGE_STREAM_MAX_STEPS=30", script)
         self.assertNotIn("Dấu hiệu này được tìm thấy trong nội dung đã gửi.", script)
         self.assertIn("quote.textContent=`Dấu hiệu: “${quoteText}”`", script)
         self.assertIn("function playMessageSequence()", script)
         self.assertIn("function revealPsychologyMessages()", script)
         self.assertIn("function revealRowsSequentially(rows,{onComplete=null}={})", script)
+        self.assertIn("function streamMessageContent(message,onComplete)", script)
+        self.assertIn("document.createTreeWalker(message,NodeFilter.SHOW_TEXT)", script)
+        self.assertIn("!parent?.closest('.original-message')", script)
+        self.assertIn("message.setAttribute('aria-busy','true')", script)
+        self.assertIn("unit.node.nodeValue+=unit.text", script)
+        self.assertIn("window.setTimeout(revealNextChunk,MESSAGE_STREAM_CHUNK_MS)", script)
+        self.assertIn("window.setTimeout(revealNextMessage,MESSAGE_STREAM_GAP_MS)", script)
         self.assertIn("message.hidden=!reduceMotion", script)
         self.assertIn("message.hidden=false", script)
         self.assertIn("function scrollToResultMessage(message,{force=false}={})", script)
@@ -257,7 +310,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('"/detective-avatar.png"', service_worker)
         self.assertIn('"/psychologist-avatar.png"', service_worker)
         self.assertIn('"/responder-avatar.png"', service_worker)
-        self.assertIn('CACHE_NAME="scamcheck-shell-v20"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v27"', service_worker)
         self.assertIn(
             'new Set(["/","/styles.css","/app-data.js","/app-render.js","/app.js"])',
             service_worker,
@@ -286,6 +339,127 @@ class FrontendTests(unittest.TestCase):
             render_signals.index("renderRecommendations("),
         )
 
+    def test_text_colors_meet_wcag_aa_contrast(self) -> None:
+        styles = (
+            Path(__file__).resolve().parent.parent / "frontend" / "styles.css"
+        ).read_text(encoding="utf-8")
+        normal_styles, high_contrast_styles = styles.split(
+            "html[data-high-contrast]{", maxsplit=1
+        )
+
+        def tokens(css: str) -> dict[str, str]:
+            return dict(re.findall(r"--([a-z-]+):(#[0-9a-fA-F]{6})", css))
+
+        normal = tokens(normal_styles)
+        high_contrast = tokens(high_contrast_styles)
+        self.assertIn(
+            ".message-input::placeholder{color:var(--muted);opacity:1}",
+            styles,
+        )
+        self.assertIn(
+            ".library-search::placeholder{color:var(--muted);opacity:1}",
+            styles,
+        )
+
+        mode_pairs = {
+            "normal": [
+                ("muted text on white", normal["muted"], "#ffffff"),
+                ("muted text on input", normal["muted"], "#fbfdff"),
+                ("muted text on library search", normal["muted"], "#f9fbfd"),
+                ("muted text on footer", normal["muted"], "#e8f0f6"),
+                ("unavailable status", normal["muted"], "#eef2f5"),
+                (
+                    "blue text on pale blue",
+                    normal["blue-dark"],
+                    normal["blue-pale"],
+                ),
+                ("success status", normal["success"], normal["success-soft"]),
+                ("warning status", normal["warning"], normal["warning-soft"]),
+                ("danger status", normal["danger"], normal["danger-soft"]),
+                ("white text on blue", "#ffffff", normal["blue"]),
+                ("white text on dark blue", "#ffffff", normal["blue-dark"]),
+                ("white text on success", "#ffffff", normal["success"]),
+                ("white text on danger", "#ffffff", normal["danger"]),
+            ],
+            "high contrast": [
+                ("muted text on white", high_contrast["muted"], "#ffffff"),
+                ("muted text on input", high_contrast["muted"], "#ffffff"),
+                (
+                    "muted text on library search",
+                    high_contrast["muted"],
+                    "#f9fbfd",
+                ),
+                ("muted text on footer", high_contrast["muted"], "#e4ebf1"),
+                ("unavailable status", high_contrast["muted"], "#eef2f5"),
+                (
+                    "blue text on pale blue",
+                    high_contrast["blue-dark"],
+                    high_contrast["blue-pale"],
+                ),
+                (
+                    "success status",
+                    high_contrast["success"],
+                    high_contrast["success-soft"],
+                ),
+                (
+                    "warning status",
+                    high_contrast["warning"],
+                    high_contrast["warning-soft"],
+                ),
+                (
+                    "danger status",
+                    high_contrast["danger"],
+                    high_contrast["danger-soft"],
+                ),
+                ("white text on blue", "#ffffff", high_contrast["blue"]),
+                (
+                    "white text on dark blue",
+                    "#ffffff",
+                    high_contrast["blue-dark"],
+                ),
+                (
+                    "white text on success",
+                    "#ffffff",
+                    high_contrast["success"],
+                ),
+                ("white text on danger", "#ffffff", high_contrast["danger"]),
+            ],
+        }
+        fixed_color_pairs = [
+            ("delivery sample", "#875300", "#fff4d6"),
+            ("prize sample", "#694087", "#f3ebf9"),
+            ("psychologist label", "#6d3d8c", "#f3ebf9"),
+            ("psychologist status", "#78588b", "#f4eaf9"),
+            ("psychologist message", "#4f3b5d", "#ffffff"),
+            ("post-analysis hint", "#785f86", "#ffffff"),
+            ("post-analysis option", "#5b3d6b", "#faf7fc"),
+            ("selected post-analysis option", "#ffffff", "#754592"),
+            ("responder label", "#226746", "#e4f3eb"),
+            ("responder message", "#244c3a", "#ffffff"),
+            ("responder step number", "#ffffff", "#2e8058"),
+            ("recommendation heading", "#0e4f91", "#e6f2ff"),
+            ("recommendation copy", "#315d84", "#e6f2ff"),
+            ("recommendation item", "#173f65", "#ffffff"),
+            ("police category", "#6f478c", "#f3ebf9"),
+            ("prize category", "#8a5900", "#fff4d6"),
+            ("delivery category", "#18704a", "#eaf8f0"),
+            ("hotline safety note", "#72521b", "#fff8e8"),
+            ("emergency hotline", "#9b2929", "#fff0f0"),
+        ]
+
+        failures = []
+        for mode, pairs in mode_pairs.items():
+            for label, foreground, background in pairs:
+                ratio = contrast_ratio(foreground, background)
+                if ratio < 4.5:
+                    failures.append(f"{mode}: {label} = {ratio:.2f}:1")
+        for label, foreground, background in fixed_color_pairs:
+            ratio = contrast_ratio(foreground, background)
+            if ratio < 4.5:
+                failures.append(f"all modes: {label} = {ratio:.2f}:1")
+
+        self.assertEqual(failures, [])
+
     def test_analysis_uses_a_separate_processing_frame(self) -> None:
         root = Path(__file__).resolve().parent.parent
         page = (root / "frontend" / "index.html").read_text(encoding="utf-8")
@@ -296,6 +470,11 @@ class FrontendTests(unittest.TestCase):
             script.index("function createLibraryIcon(")
         ]
         self.assertIn("isAnalyzing=true", run_analysis)
+        self.assertIn("decrementRemainingAnalyses();", run_analysis)
+        self.assertLess(
+            run_analysis.index("decrementRemainingAnalyses();"),
+            run_analysis.index("requestJson('/analyze'"),
+        )
         self.assertIn("updateInputState();", run_analysis)
         self.assertNotIn("inputFrame.style.display='none'", run_analysis)
         self.assertIn("showProcessingFrame()", run_analysis)
