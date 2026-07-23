@@ -82,7 +82,7 @@ class GeminiWrapperTests(GeminiTestCase):
     async def test_retries_after_rate_limit(self) -> None:
         await self.gemini.close()
         self.gemini = await self.mock_gemini.create_wrapper(
-            api_keys=["first-key", "second-key", "third-key"],
+            api_keys=["first-key", "second-key", "third-key", "fourth-key"],
         )
         expected = DetectiveAnalysis(
             risk_level=0.9,
@@ -92,6 +92,7 @@ class GeminiWrapperTests(GeminiTestCase):
         )
         self.mock_gemini.add_response(status_code=429)
         self.mock_gemini.add_response(status_code=429)
+        self.mock_gemini.add_response(status_code=429)
         self.mock_gemini.add_analysis(expected)
 
         with self.assertLogs("src.wrapper", level="WARNING") as logs:
@@ -99,7 +100,7 @@ class GeminiWrapperTests(GeminiTestCase):
                 actual = await self.gemini.generate(DETECTIVE, "message")
 
         self.assertEqual(actual, expected)
-        self.assertEqual(sleep.await_args_list, [call(0.1), call(0.2)])
+        self.assertEqual(sleep.await_args_list, [call(0.1), call(0.2), call(0.4)])
         self.assertEqual(
             [
                 record.getMessage()
@@ -109,9 +110,10 @@ class GeminiWrapperTests(GeminiTestCase):
             [
                 "Gemini API rate limit reached for API key index 0",
                 "Gemini API rate limit reached for API key index 1",
+                "Gemini API rate limit reached for API key index 2",
             ],
         )
-        self.assertEqual(len(self.mock_gemini.requests), 3)
+        self.assertEqual(len(self.mock_gemini.requests), 4)
         self.assertEqual(
             self.mock_gemini.requests[0].headers["x-goog-api-key"],
             "first-key",
@@ -123,6 +125,10 @@ class GeminiWrapperTests(GeminiTestCase):
         self.assertEqual(
             self.mock_gemini.requests[2].headers["x-goog-api-key"],
             "third-key",
+        )
+        self.assertEqual(
+            self.mock_gemini.requests[3].headers["x-goog-api-key"],
+            "fourth-key",
         )
 
     async def test_raises_after_three_rate_limits(self) -> None:
@@ -137,11 +143,11 @@ class GeminiWrapperTests(GeminiTestCase):
             with self.assertRaises(httpx.HTTPStatusError):
                 await self.gemini.generate(DETECTIVE, "message")
 
-        self.assertEqual(sleep.await_args_list, [call(0.1), call(0.2)])
-        self.assertEqual(len(self.mock_gemini.requests), 3)
+        self.assertEqual(sleep.await_args_list, [call(0.1), call(0.2), call(0.4)])
+        self.assertEqual(len(self.mock_gemini.requests), 4)
         self.assertEqual(
             [request.headers["x-goog-api-key"] for request in self.mock_gemini.requests],
-            ["first-key", "second-key", "third-key"],
+            ["first-key", "second-key", "third-key", "first-key"],
         )
 
     async def test_raises_for_malformed_structured_output(self) -> None:

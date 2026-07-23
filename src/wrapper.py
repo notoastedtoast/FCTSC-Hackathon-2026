@@ -11,7 +11,6 @@ from time import monotonic
 from .schema import CharacterConfig, Settings
 
 DELAY = 0.1
-MAX_RETRIES = 2
 REQUEST_TIMEOUT = 20
 DELIMITER = "\n----------\n"
 logger = logging.getLogger(__name__)
@@ -110,16 +109,19 @@ class GeminiWrapper:
         if not self.api_keys:
             raise ValueError("At least one Gemini API key is required")
 
-        for attempt in range(MAX_RETRIES + 1):
+        deadline = monotonic() + self.timeout
+        attempt = 0
+        while True:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise httpx.TimeoutException("Gemini response timed out")
             key_index = self.key_index
             try:
                 resp = await self._generate(
-                    config, prompt, self.timeout, self.api_keys[key_index]
+                    config, prompt, remaining, self.api_keys[key_index]
                 )
             except (httpx.TimeoutException, httpx.TransportError):
                 logger.warning("Gemini request failed; retrying with the next API key")
-                if attempt == MAX_RETRIES:
-                    raise
             else:
                 if resp.status_code == 200:
                     payload: dict = resp.json()
@@ -133,15 +135,15 @@ class GeminiWrapper:
                     logger.warning("Gemini API rate limit reached for API key index %d", key_index)
                 else:
                     logger.warning("Gemini API unavailable; trying the next API key")
-                if attempt == MAX_RETRIES:
-                    resp.raise_for_status()
             finally:
                 self.key_index = (key_index + 1) % len(self.api_keys)
 
             delay = DELAY * (2 ** attempt)
-            await asyncio.sleep(delay)
-
-        raise AssertionError("Unreachable")
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise httpx.TimeoutException("Gemini response timed out")
+            await asyncio.sleep(min(delay, remaining))
+            attempt += 1
 
     async def close(self):
         return await self.client.aclose()
