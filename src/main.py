@@ -22,14 +22,22 @@ from .wrapper import GeminiWrapper
 
 logger = logging.getLogger(__name__)
 
-if not load_dotenv(override=True):
-    print("Could not load .env file")
-    raise SystemExit
+# Deployment fix: local `.env` is optional because platforms like Vercel inject
+# environment variables without creating a file on disk. We must not exit just
+# because the file itself is absent.
+load_dotenv(override=True)
 
 settings = Settings.from_environment()
 database = HistoryDatabase(":memory:")
 client = GeminiWrapper.from_settings(settings)
 session_call_counts: dict[str, int] = {}
+
+
+async def ensure_database_ready() -> None:
+    """Open the in-memory history store lazily for serverless request handling."""
+    # Deployment fix: some serverless request paths may not run FastAPI lifespan
+    # the same way as local Uvicorn reload mode, so we also connect on demand.
+    await database.connect()
 
 
 def get_client() -> GeminiWrapper:
@@ -71,6 +79,9 @@ async def analyze(
     data: Annotated[str, Body(...)],
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> Analysis:
+    # Deployment fix: make sure the lightweight DB is ready even if lifespan
+    # startup did not open it before the first request.
+    await ensure_database_ready()
     session_id = consume_ai_call(response, session_id)
     deterministic_result = await check_message(data)
 
@@ -100,6 +111,9 @@ async def guide(
     client: ClientDep,
     history_id: Annotated[UUID, Body(...)],
 ) -> GuideOutput | Response:
+    # Deployment fix: guide generation also reads/writes history, so it needs
+    # the same lazy DB initialization as /analyze/.
+    await ensure_database_ready()
     item = await database.get_history_item(str(history_id))
     if item is None:
         raise HTTPException(404, "History item not found")
@@ -128,6 +142,9 @@ async def guide(
 async def history(
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> list[HistoryEntry]:
+    # Deployment fix: history routes must be safe even when startup hooks were
+    # skipped by the hosting environment.
+    await ensure_database_ready()
     if session_id is None:
         return []
     return await database.get_history(session_id)
@@ -135,6 +152,8 @@ async def history(
 
 @app.get("/history/{history_id}")
 async def history_item(history_id: UUID) -> HistoryEntry:
+    # Deployment fix: keep single-history fetch working in serverless mode too.
+    await ensure_database_ready()
     item = await database.get_history_item(str(history_id))
     if item is None:
         raise HTTPException(404, "History item not found")
@@ -146,6 +165,9 @@ async def delete_history(
     history_id: UUID,
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> None:
+    # Deployment fix: deletion touches the same in-memory DB, so initialize it
+    # lazily here as well.
+    await ensure_database_ready()
     if session_id is None:
         raise HTTPException(401, "Session ID is required")
     if not await database.delete_history(session_id, str(history_id)):
