@@ -75,11 +75,39 @@ async def frontend_app() -> FileResponse:
     return frontend_file("app.js")
 
 
+@router.get("/app-data.js", include_in_schema=False)
+async def frontend_app_data() -> FileResponse:
+    return frontend_file("app-data.js")
+
+
+@router.get("/app-render.js", include_in_schema=False)
+async def frontend_app_render() -> FileResponse:
+    return frontend_file("app-render.js")
+
+
 @router.get("/service-worker.js", include_in_schema=False)
 async def frontend_service_worker() -> FileResponse:
-    return frontend_file("service-worker.js")
+    return FileResponse(
+        frontend_directory / "service-worker.js",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
 
 
 @router.get("/scamcheck-logo.png", include_in_schema=False)
 async def frontend_logo() -> FileResponse:
     return frontend_file("scamcheck-logo.png")
+
+
+@router.get("/detective-avatar.png", include_in_schema=False)
+async def frontend_detective_avatar() -> FileResponse:
+    return frontend_file("detective-avatar.png")
+
+
+@router.get("/psychologist-avatar.png", include_in_schema=False)
+async def frontend_psychologist_avatar() -> FileResponse:
+    return frontend_file("psychologist-avatar.png")
+
+
+@router.get("/responder-avatar.png", include_in_schema=False)
+async def frontend_responder_avatar() -> FileResponse:
+    return frontend_file("responder-avatar.png")

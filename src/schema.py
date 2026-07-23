@@ -123,6 +123,10 @@ class Analysis(BaseModel):
         return max(ai_risk, self.deterministic_risk_floor, key=("low", "medium", "high").index)
 
 
+class Cookies(BaseModel):
+    session_id: str
+
+
 @dataclass
 class Settings:
     base_url: str

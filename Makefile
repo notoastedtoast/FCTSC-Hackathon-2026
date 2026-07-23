@@ -1,12 +1,15 @@
-.PHONY: test test-offline test-online run
+.PHONY: test test-offline test-online typecheck run
 
 test: test-offline
 
 test-offline:
-	.venv/bin/python -m unittest -f tests.test_api tests.test_gemini
+	uv run python -X utf8 -m unittest -f tests.test_api.ApiTests tests.test_analyzer.AnalyzerTests tests.test_gemini.MockGeminiIntegrationTests tests.test_database.AnalysisRepositoryTests tests.test_config.ConfigurationTests tests.test_catalog.CatalogTests tests.test_frontend.FrontendTests tests.test_regression.RegressionTests tests.test_deterministic_checker tests.test_url_extractor
 
 test-online:
-	.venv/bin/python -m unittest -v tests.test_live_api
+	uv run python -X utf8 -m unittest -v tests.test_live_api
+
+typecheck:
+	uvx pyright
 
 run:
-	.venv/bin/uvicorn src.main:app --reload
+	uv run uvicorn src.main:app --reload
