@@ -2,8 +2,10 @@ from typing import Annotated
 from uuid import UUID, uuid4
 from contextlib import asynccontextmanager
 import logging
+import json
+import re
 
-from fastapi import Body, Cookie, Depends, FastAPI, Header, HTTPException, Response
+from fastapi import Body, Cookie, Depends, FastAPI, HTTPException, Response
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -14,9 +16,13 @@ from .frontend import router as frontend_router
 from .schema import (
     DETECTIVE,
     GUIDE,
+    RESPONDER,
     Analysis,
     GuideOutput,
+    ResponderOutput,
+    ResponderRequest,
     Settings,
+    TELEPHONES,
 )
 from .wrapper import GeminiWrapper
 
@@ -31,7 +37,6 @@ settings = Settings.from_environment()
 database = HistoryDatabase(":memory:")
 client = GeminiWrapper.from_settings(settings)
 session_call_counts: dict[str, int] = {}
-session_page_ids: dict[str, str] = {}
 
 
 async def ensure_database_ready() -> None:
@@ -48,20 +53,10 @@ def get_client() -> GeminiWrapper:
 ClientDep = Annotated[GeminiWrapper, Depends(get_client)]
 
 
-def consume_ai_call(
-    response: Response,
-    session_id: str | None,
-    page_session_id: str | None = None,
-) -> str:
+def consume_ai_call(response: Response, session_id: str | None) -> str:
     if session_id is None:
         session_id = str(uuid4())
         response.set_cookie("session_id", session_id, httponly=True, samesite="lax")
-    if (
-        page_session_id is not None
-        and session_page_ids.get(session_id) != page_session_id
-    ):
-        session_page_ids[session_id] = page_session_id
-        session_call_counts[session_id] = 0
     calls = session_call_counts.get(session_id, 0)
     if calls >= settings.ai_session_call_limit:
         raise HTTPException(429, "AI session call limit reached")
@@ -89,19 +84,11 @@ async def analyze(
     response: Response,
     data: Annotated[str, Body(...)],
     session_id: Annotated[str | None, Cookie()] = None,
-    page_session_id: Annotated[
-        str | None,
-        Header(
-            alias="X-ScamCheck-Page-Session",
-            min_length=1,
-            max_length=80,
-        ),
-    ] = None,
 ) -> Analysis:
     # Deployment fix: make sure the lightweight DB is ready even if lifespan
     # startup did not open it before the first request.
     await ensure_database_ready()
-    session_id = consume_ai_call(response, session_id, page_session_id)
+    session_id = consume_ai_call(response, session_id)
     deterministic_result = await check_message(data)
 
     try:
@@ -117,7 +104,7 @@ async def analyze(
         deterministic_findings=deterministic_result.findings,
         deterministic_risk_floor=deterministic_result.risk_floor,
     )
-    await database.save_analysis(session_id, data, result)
+    result.id = UUID(await database.save_analysis(session_id, data, result))
     return result
 
 
@@ -155,6 +142,33 @@ async def guide(
 
     await database.save_guide_output(str(history_id), output.data)
     return output
+
+
+@app.post("/responder/", response_model=ResponderOutput)
+async def responder(client: ClientDep, data: ResponderRequest) -> ResponderOutput:
+    await ensure_database_ready()
+    item = await database.get_history_item(str(data.history_id))
+
+    if item is None:
+        raise HTTPException(404, "History item not found")
+
+    stored = Analysis.model_validate(item["analysis"])
+
+    if stored.analysis is None or stored.risk_level == "low":
+        raise HTTPException(409, "A non-low-risk analysis is required")
+
+    hotlines = {name: number for name, number in data.hotlines.items() if TELEPHONES.get(name) == number}
+    context = json.dumps({"choice": data.choice, "analysis": stored.analysis.model_dump(), "hotlines": hotlines}, ensure_ascii=False)
+
+    try:
+        output = await client.generate(RESPONDER, context)
+        numbers = {re.sub(r"\D", "", value) for value in re.findall(r"\d(?:[\s.-]?\d){2,}", " ".join(output.steps))}
+        if not numbers <= set(TELEPHONES.values()):
+            raise ValueError("Responder output included an unknown phone number")
+        return output
+    except Exception as e:
+        logger.exception("Gemini responder generation failed with exception %s", e)
+        raise HTTPException(502, "AI responder generation failed") from e
 
 
 @app.get("/history/")

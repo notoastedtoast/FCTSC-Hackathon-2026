@@ -1,11 +1,12 @@
 from unittest import IsolatedAsyncioTestCase
+from uuid import UUID
 from unittest.mock import AsyncMock, patch
 
 import httpx
 
 from src import main
 from src.database import HistoryDatabase
-from src.schema import Analysis, DetectiveAnalysis, GuideOutput
+from src.schema import Analysis, DetectiveAnalysis, GuideOutput, ResponderOutput
 
 from .mock_gemini import MockGeminiAPI
 
@@ -23,7 +24,6 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self._original_overrides = main.app.dependency_overrides.copy()
         main.database = self.database
         main.session_call_counts.clear()
-        main.session_page_ids.clear()
 
         async def get_mock_client():
             return self.gemini
@@ -41,7 +41,6 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         main.app.dependency_overrides.clear()
         main.app.dependency_overrides.update(self._original_overrides)
         main.session_call_counts.clear()
-        main.session_page_ids.clear()
 
     async def test_analyze_returns_and_saves_gemini_result(self) -> None:
         analysis = DetectiveAnalysis(
@@ -53,6 +52,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.mock_gemini.add_analysis(analysis)
         result = Analysis(
             success=True,
+            id=UUID(self.history_id),
             analysis=analysis,
         )
 
@@ -61,7 +61,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json(),
-            result.model_dump(),
+            result.model_dump(mode="json"),
         )
         self.assertIsNotNone(response.cookies.get("session_id"))
         self.database.save_analysis.assert_awaited_once()
@@ -83,7 +83,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(
             response.json(),
-            {"success": False, "analysis": None, "deterministic_findings": [],
+            {"success": False, "id": None, "analysis": None, "deterministic_findings": [],
              "deterministic_risk_floor": "low", "risk_level": None},
         )
         self.database.save_analysis.assert_not_awaited()
@@ -170,6 +170,34 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json(), {"detail": "History item not found"})
 
+    async def test_responder_generates_after_a_selected_scenario(self) -> None:
+        analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})
+        output = ResponderOutput(steps=["Gọi 1900545413 ngay.", "Khóa tài khoản."])
+        self.mock_gemini.add_analysis(output)
+        self.database.get_history_item.return_value = {"analysis": Analysis(success=True, analysis=analysis).model_dump()}
+
+        response = await self.client.post("/responder/", json={"history_id": self.history_id, "choice": "sent-money", "hotlines": {"Vietcombank": "1900545413", "Fake": "999"}})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), output.model_dump())
+        self.assertIn("1900545413", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertNotIn("19009247", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertNotIn("999", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+
+    async def test_telephones_are_public(self) -> None:
+        response = await self.client.get("/telephones")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["Vietcombank"], "1900545413")
+
+    async def test_responder_rejects_unknown_output_phone(self) -> None:
+        analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})
+        self.mock_gemini.add_analysis(ResponderOutput(steps=["Gọi 999.", "Khóa tài khoản."]))
+        self.database.get_history_item.return_value = {"analysis": Analysis(success=True, analysis=analysis).model_dump()}
+
+        response = await self.client.post("/responder/", json={"history_id": self.history_id, "choice": "sent-money", "hotlines": {}})
+
+        self.assertEqual(response.status_code, 502)
+
     async def test_analyze_enforces_per_session_call_limit(self) -> None:
         analysis = DetectiveAnalysis(
             risk_level=0.1,
@@ -195,47 +223,6 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(second.status_code, 429)
         self.assertEqual(second.json(), {"detail": "AI session call limit reached"})
         self.assertEqual(len(self.mock_gemini.requests), 1)
-
-    async def test_reload_page_session_resets_call_limit(self) -> None:
-        analysis = DetectiveAnalysis(
-            risk_level=0.1,
-            reasoning="Safe.",
-            suggestions=[],
-            excerpts={},
-        )
-        self.mock_gemini.add_analysis(analysis)
-        self.mock_gemini.add_analysis(analysis)
-
-        with patch.object(main.settings, "ai_session_call_limit", 1):
-            first = await self.client.post(
-                "/analyze/",
-                json="First page request",
-                headers={
-                    "cookie": "session_id=session-a",
-                    "X-ScamCheck-Page-Session": "page-session-before-reload",
-                },
-            )
-            exhausted = await self.client.post(
-                "/analyze/",
-                json="Same page request",
-                headers={
-                    "cookie": "session_id=session-a",
-                    "X-ScamCheck-Page-Session": "page-session-before-reload",
-                },
-            )
-            after_reload = await self.client.post(
-                "/analyze/",
-                json="Request after reload",
-                headers={
-                    "cookie": "session_id=session-a",
-                    "X-ScamCheck-Page-Session": "page-session-after-reload",
-                },
-            )
-
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(exhausted.status_code, 429)
-        self.assertEqual(after_reload.status_code, 200)
-        self.assertEqual(len(self.mock_gemini.requests), 2)
 
     async def test_delete_history_item_for_session(self) -> None:
         self.database.delete_history.return_value = True

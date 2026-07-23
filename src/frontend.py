@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Path as ApiPath
 from fastapi.responses import FileResponse
 from pydantic import TypeAdapter
 
-from .schema import ScamType, ScamTypeGroup
+from .schema import ScamType, ScamTypeGroup, TELEPHONES
 
 
 router = APIRouter()
@@ -49,6 +49,11 @@ async def scam_type(
     if item is None:
         raise HTTPException(404, "Scam type not found")
     return item
+
+
+@router.get("/telephones", response_model=dict[str, str])
+async def telephones() -> dict[str, str]:
+    return TELEPHONES
 
 
 def frontend_file(name: str) -> FileResponse:
