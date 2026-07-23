@@ -109,10 +109,6 @@ function syncQuickInputLayout(){
 syncQuickInputLayout();
 mobileLayoutQuery.addEventListener('change',syncQuickInputLayout);
 
-function viewFromHash(){
-  return routeFromHash().view;
-}
-
 function routeFromHash(){
   const candidate=window.location.hash.slice(1);
   if(candidate==='library')return {view:'library',detailId:null};

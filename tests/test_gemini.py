@@ -27,7 +27,7 @@ class GeminiWrapperTests(GeminiTestCase):
                 )
                 self.assertEqual(analysis.model_dump()["risk_level"], expected)
 
-    async def test_can_generate_same_prompt_more_than_once(self) -> None:
+    async def test_caches_same_prompt(self) -> None:
         first = DetectiveAnalysis(
             risk_level=0.1,
             reasoning="First response",
@@ -47,8 +47,8 @@ class GeminiWrapperTests(GeminiTestCase):
         second_result = await self.gemini.generate(DETECTIVE, "same message")
 
         self.assertEqual(first_result, first)
-        self.assertEqual(second_result, second)
-        self.assertEqual(len(self.mock_gemini.requests), 2)
+        self.assertEqual(second_result, first)
+        self.assertEqual(len(self.mock_gemini.requests), 1)
 
     async def test_keeps_trusted_prompt_out_of_user_content(self) -> None:
         expected = DetectiveAnalysis(

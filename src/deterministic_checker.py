@@ -6,7 +6,21 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from .url_extractor import extract_urls
+URL_PATTERN = re.compile(
+    r"(?<!@)\b(?:https?://|www\.)[^\s<>\"'`]+|"
+    r"(?<!@)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+    r"[a-z]{2,63}(?:[/?#][^\s<>\"'`]*)?",
+    re.IGNORECASE,
+)
+TRAILING_PUNCTUATION = ".,;:!?)]}"
+
+
+def extract_urls(text: str) -> list[str]:
+    """Return URLs and domains found in untrusted text."""
+    return [
+        match.group().rstrip(TRAILING_PUNCTUATION)
+        for match in URL_PATTERN.finditer(text)
+    ]
 
 SHORTENER_HOSTS = frozenset({
     "bit.ly", "buff.ly", "cutt.ly", "is.gd", "ow.ly", "rb.gy", "rebrand.ly",
@@ -157,15 +171,19 @@ async def resolve_shortened_url(url: str, client: httpx.AsyncClient) -> str:
 async def check_urls(text: str, client: httpx.AsyncClient | None = None) -> list[URLCheck]:
     """Extract URLs and deterministically resolve recognized shortened links."""
     if client is not None:
-        return [
-            URLCheck(
+        checks = []
+        for url in extract_urls(text):
+            try:
+                destination = await resolve_shortened_url(url, client)
+            except httpx.HTTPError:
+                destination = url
+            checks.append(URLCheck(
                 url,
-                destination := await resolve_shortened_url(url, client),
+                destination,
                 find_impersonated_domain(url) or find_impersonated_domain(destination),
                 _has_cyrillic_hostname(url) or _has_cyrillic_hostname(destination),
-            )
-            for url in extract_urls(text)
-        ]
+            ))
+        return checks
     async with httpx.AsyncClient(timeout=0.5) as owned_client:
         return await check_urls(text, owned_client)
 

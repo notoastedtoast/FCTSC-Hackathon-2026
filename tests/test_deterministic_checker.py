@@ -95,6 +95,20 @@ class DeterministicCheckerTests(IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(self.requests), 1)
 
+    async def test_keeps_original_url_when_shortener_resolution_fails(self) -> None:
+        def fail_request(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("offline", request=request)
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(fail_request),
+        ) as failing_client:
+            checks = await check_urls("Visit bit.ly/check", failing_client)
+
+        self.assertEqual(
+            [(check.url, check.destination) for check in checks],
+            [("bit.ly/check", "bit.ly/check")],
+        )
+
     async def test_flags_bank_and_government_lookalikes(self) -> None:
         self.assertEqual(
             find_impersonated_domain("https://vietcornbank-login.example"),

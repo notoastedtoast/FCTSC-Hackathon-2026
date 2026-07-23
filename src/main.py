@@ -103,19 +103,23 @@ async def guide(
     item = await database.get_history_item(str(history_id))
     if item is None:
         raise HTTPException(404, "History item not found")
+
     stored_analysis = Analysis.model_validate(item["analysis"])
     analysis = stored_analysis.analysis
+
     if analysis is None:
         raise HTTPException(409, "Successful analysis is required")
     if stored_analysis.risk_level == "low":
         return Response(status_code=204)
     if item["guide_output"] is not None:
         return GuideOutput(data=item["guide_output"])
+
     try:
         output = await client.generate(GUIDE, analysis.model_dump_json())
     except Exception as e:
         logger.exception(f"Gemini guide generation failed with exception {e}")
         raise HTTPException(502, "AI guide generation failed") from e
+
     await database.save_guide_output(str(history_id), output.data)
     return output
 

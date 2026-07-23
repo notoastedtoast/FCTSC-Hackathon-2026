@@ -21,6 +21,7 @@ HAS_GEMINI_API_KEY = bool(
 def create_live_analyze_test(
     message: str,
     *,
+    session_id: str,
     risk_level: tuple[float, float],
     minimum_suggestions: int,
     excerpts: tuple[int, int],
@@ -36,7 +37,11 @@ def create_live_analyze_test(
     if not 0 <= minimum_excerpts <= maximum_excerpts:
         raise ValueError("excerpt bounds must be ordered non-negative values")
     async def test(case: "LiveAnalyzeAPITests") -> None:
-        response = await case.client.post("/analyze/", json=message)
+        response = await case.client.post(
+            "/analyze/",
+            json=message,
+            headers={"cookie": f"session_id={session_id}"},
+        )
         context = f"Input: {message}\nResponse: {response.text}"
 
         case.assertEqual(
@@ -89,6 +94,7 @@ class LiveAnalyzeAPITests(IsolatedAsyncioTestCase):
         self._original_database = main.database
         self._original_overrides = main.app.dependency_overrides.copy()
         main.database = self.database
+        main.session_call_counts.clear()
 
         async def get_real_client():
             return main.client
@@ -103,6 +109,7 @@ class LiveAnalyzeAPITests(IsolatedAsyncioTestCase):
         await self.client.aclose()
         await self.main.client.close()
         self.main.database = self._original_database
+        self.main.session_call_counts.clear()
         self.main.app.dependency_overrides.clear()
         self.main.app.dependency_overrides.update(self._original_overrides)
 
@@ -113,6 +120,7 @@ class LiveAnalyzeAPITests(IsolatedAsyncioTestCase):
                 try:
                     test = create_live_analyze_test(
                         live_input["input"],
+                        session_id=f"live-test-{index}",
                         risk_level=(
                             live_input["risk_level"]["min"],
                             live_input["risk_level"]["max"],
