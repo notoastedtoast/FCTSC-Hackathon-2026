@@ -1,5 +1,3 @@
-"""Deterministic helper checks that supplement, but do not replace, model output."""
-
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
@@ -8,15 +6,27 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from .url_extractor import extract_urls
+URL_PATTERN = re.compile(
+    r"(?<!@)\b(?:https?://|www\.)[^\s<>\"'`]+|"
+    r"(?<!@)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+    r"[a-z]{2,63}(?:[/?#][^\s<>\"'`]*)?",
+    re.IGNORECASE,
+)
+TRAILING_PUNCTUATION = ".,;:!?)]}"
 
-# Known short-link hosts are flagged without resolving them during normal analysis.
+
+def extract_urls(text: str) -> list[str]:
+    """Return URLs and domains found in untrusted text."""
+    return [
+        match.group().rstrip(TRAILING_PUNCTUATION)
+        for match in URL_PATTERN.finditer(text)
+    ]
+
 SHORTENER_HOSTS = frozenset({
     "bit.ly", "buff.ly", "cutt.ly", "is.gd", "ow.ly", "rb.gy", "rebrand.ly",
     "shorturl.at", "t.co", "tiny.cc", "tinyurl.com",
 })
 MAX_REDIRECTS = 5
-# Protected domains are used for lookalike and impersonation checks.
 PROTECTED_DOMAINS = frozenset({
     "acb.com.vn", "agribank.com.vn", "baohiemxahoi.gov.vn", "bidv.com.vn",
     "chinhphu.vn", "dichvucong.gov.vn", "gdt.gov.vn", "hdbank.com.vn",
@@ -71,7 +81,6 @@ HIGH_RISK_COMBINATIONS = (
 
 @dataclass(frozen=True)
 class URLCheck:
-    """One URL-related deterministic finding."""
     url: str
     destination: str
     impersonated_domain: str | None = None
@@ -80,7 +89,6 @@ class URLCheck:
 
 @dataclass(frozen=True)
 class RuleFinding:
-    """One text or URL signal returned to the UI as supporting evidence."""
     kind: str
     severity: Literal["medium", "high"]
     excerpt: str
@@ -89,7 +97,6 @@ class RuleFinding:
 
 @dataclass(frozen=True)
 class DeterministicResult:
-    """Combined deterministic output returned alongside the AI analysis."""
     url_checks: list[URLCheck]
     findings: list[RuleFinding]
     risk_floor: Literal["low", "medium", "high"]
@@ -164,15 +171,19 @@ async def resolve_shortened_url(url: str, client: httpx.AsyncClient) -> str:
 async def check_urls(text: str, client: httpx.AsyncClient | None = None) -> list[URLCheck]:
     """Extract URLs and deterministically resolve recognized shortened links."""
     if client is not None:
-        return [
-            URLCheck(
+        checks = []
+        for url in extract_urls(text):
+            try:
+                destination = await resolve_shortened_url(url, client)
+            except httpx.HTTPError:
+                destination = url
+            checks.append(URLCheck(
                 url,
-                destination := await resolve_shortened_url(url, client),
+                destination,
                 find_impersonated_domain(url) or find_impersonated_domain(destination),
                 _has_cyrillic_hostname(url) or _has_cyrillic_hostname(destination),
-            )
-            for url in extract_urls(text)
-        ]
+            ))
+        return checks
     async with httpx.AsyncClient(timeout=0.5) as owned_client:
         return await check_urls(text, owned_client)
 

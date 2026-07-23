@@ -1,0 +1,158 @@
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=5, message='Tin nhắn cho biết cần xác nhận số điện thoại mới trước khi cập nhật hồ sơ, nhưng không yêu cầu thêm thông tin nào khác.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 58, in test
+    case.assertGreaterEqual(analysis.risk_level, minimum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.2 not greater than or equal to 0.34 : Input: Tin nhắn cho biết cần xác nhận số điện thoại mới trước khi cập nhật hồ sơ, nhưng không yêu cầu thêm thông tin nào khác.
+Response: {"success":true,"analysis":{"risk_level":0.2,"reasoning":"Thông báo yêu cầu xác nhận số điện thoại là một quy trình bảo mật thông thường. Tuy nhiên, cần thận trọng nếu tin nhắn này đi kèm với đường dẫn lạ hoặc yêu cầu cung cấp mã OTP.","suggestions":["Kiểm tra lại xem bạn có thực hiện yêu cầu cập nhật hồ sơ nào gần đây không.","Chỉ thực hiện xác nhận thông qua ứng dụng hoặc trang web chính thức của dịch vụ.","Không nhấn vào bất kỳ đường dẫn nào trong tin nhắn nếu bạn không chắc chắn về nguồn gốc."],"excerpts":{}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"low"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=6, message='Tin nhắn nói bác được chọn nhận quà và cần xác nhận tên người nhận trước khi đến điểm giao dịch.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 59, in test
+    case.assertLessEqual(analysis.risk_level, maximum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.8 not less than or equal to 0.65 : Input: Tin nhắn nói bác được chọn nhận quà và cần xác nhận tên người nhận trước khi đến điểm giao dịch.
+Response: {"success":true,"analysis":{"risk_level":0.8,"reasoning":"Thông báo trúng thưởng bất ngờ thường là chiêu trò lừa đảo để dẫn dụ nạn nhân đến địa điểm giao dịch, nơi kẻ gian sẽ yêu cầu đóng phí vận chuyển, phí thủ tục hoặc lừa đảo chiếm đoạt thông tin cá nhân.","suggestions":["Không cung cấp thông tin cá nhân hoặc xác nhận danh tính cho các chương trình trúng thưởng không rõ nguồn gốc.","Tuyệt đối không thanh toán bất kỳ khoản phí nào để nhận quà.","Kiểm tra lại thông tin trên trang web chính thức của đơn vị tổ chức nếu có nghi ngờ."],"excerpts":{"bác được chọn nhận quà":"Đây là dấu hiệu điển hình của lừa đảo trúng thưởng nhằm đánh vào tâm lý tham lam hoặc tò mò của nạn nhân.","cần xác nhận tên người nhận trước khi đến điểm giao dịch":"Yêu cầu xác nhận thông tin cá nhân trước khi nhận quà thường là bước đầu để kẻ gian thu thập dữ liệu hoặc chuẩn bị cho các bước lừa đảo tiếp theo tại điểm giao dịch."}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"high"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=24, message='Chương trình khách hàng thân thiết đề nghị bác xác nhận cách liên hệ ưa thích trước khi gửi thêm thông tin.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 58, in test
+    case.assertGreaterEqual(analysis.risk_level, minimum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.2 not greater than or equal to 0.34 : Input: Chương trình khách hàng thân thiết đề nghị bác xác nhận cách liên hệ ưa thích trước khi gửi thêm thông tin.
+Response: {"success":true,"analysis":{"risk_level":0.2,"reasoning":"Thông điệp này có vẻ là một yêu cầu xác nhận thông tin liên lạc thông thường từ một chương trình khách hàng thân thiết. Tuy nhiên, nó thiếu thông tin cụ thể về đơn vị gửi, khiến người nhận khó xác minh tính xác thực.","suggestions":["Không nhấp vào bất kỳ liên kết nào nếu có trong tin nhắn tiếp theo.","Kiểm tra lại xem bạn có thực sự đăng ký chương trình khách hàng thân thiết nào gần đây không.","Liên hệ trực tiếp với thương hiệu qua kênh chính thức nếu bạn nghi ngờ."],"excerpts":{}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"low"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=31, message='Tin nhắn về lịch nghỉ lễ hỏi bác có còn muốn nhận thông báo từ người gửi này trong tương lai hay không.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 58, in test
+    case.assertGreaterEqual(analysis.risk_level, minimum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.0 not greater than or equal to 0.34 : Input: Tin nhắn về lịch nghỉ lễ hỏi bác có còn muốn nhận thông báo từ người gửi này trong tương lai hay không.
+Response: {"success":true,"analysis":{"risk_level":0.0,"reasoning":"Đây là một tin nhắn thông báo lịch nghỉ lễ thông thường và hỏi về tùy chọn đăng ký nhận tin (opt-out/opt-in), không có dấu hiệu lừa đảo, yêu cầu tài chính, liên kết độc hại hay yêu cầu cung cấp thông tin cá nhân.","suggestions":["Bạn có thể trả lời tùy chọn nếu muốn tiếp tục hoặc ngừng nhận thông báo.","Không cần thực hiện hành động gì đặc biệt nếu bạn không quan tâm đến thông báo từ người gửi này."],"excerpts":{}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"low"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=44, message='Người gửi nói cần xác nhận địa chỉ email trước khi chia sẻ tài liệu về một cuộc họp mà bác chưa nhớ rõ.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 59, in test
+    case.assertLessEqual(analysis.risk_level, maximum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.8 not less than or equal to 0.65 : Input: Người gửi nói cần xác nhận địa chỉ email trước khi chia sẻ tài liệu về một cuộc họp mà bác chưa nhớ rõ.
+Response: {"success":true,"analysis":{"risk_level":0.8,"reasoning":"Yêu cầu xác nhận email trước khi xem tài liệu là một thủ thuật phổ biến để dẫn dụ nạn nhân truy cập vào các trang web giả mạo nhằm đánh cắp thông tin đăng nhập hoặc cài đặt phần mềm độc hại, đặc biệt khi người nhận không nhớ rõ về cuộc họp được đề cập.","suggestions":["Không nhấp vào bất kỳ liên kết nào trong email hoặc tin nhắn yêu cầu xác nhận.","Liên hệ trực tiếp với người gửi qua kênh liên lạc tin cậy khác (như gọi điện thoại) để xác minh về cuộc họp và tài liệu.","Kiểm tra kỹ địa chỉ email người gửi xem có khớp với tên miền chính thức của tổ chức hay không."],"excerpts":{"cần xác nhận địa chỉ email trước khi chia sẻ tài liệu":"Đây là dấu hiệu điển hình của hành vi lừa đảo nhằm thu thập thông tin cá nhân hoặc chiếm đoạt tài khoản thông qua các trang web giả mạo."}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"high"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=45, message='Bác được mời nhận quà tại cửa hàng và người gửi đề nghị xác nhận số người sẽ đến nhận.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 58, in test
+    case.assertGreaterEqual(analysis.risk_level, minimum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.1 not greater than or equal to 0.34 : Input: Bác được mời nhận quà tại cửa hàng và người gửi đề nghị xác nhận số người sẽ đến nhận.
+Response: {"success":true,"analysis":{"risk_level":0.1,"reasoning":"Thông điệp này mang tính chất mời gọi nhận quà trực tiếp tại cửa hàng, không chứa liên kết độc hại, yêu cầu thanh toán, thông tin cá nhân nhạy cảm hay sự khẩn cấp bất thường. Đây có thể là một hoạt động tiếp thị thông thường.","suggestions":["Kiểm tra xem cửa hàng có uy tín hoặc bạn có từng đăng ký tham gia chương trình khuyến mãi nào không.","Không cung cấp thông tin cá nhân hoặc số căn cước công dân nếu được yêu cầu tại cửa hàng.","Nếu cảm thấy nghi ngờ, hãy gọi điện trực tiếp đến số điện thoại chính thức của cửa hàng để xác minh."],"excerpts":{}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"low"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=47, message='A delivery message asks you to confirm whether the address on your parcel is still correct, without a link or payment request.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 58, in test
+    case.assertGreaterEqual(analysis.risk_level, minimum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.1 not greater than or equal to 0.34 : Input: A delivery message asks you to confirm whether the address on your parcel is still correct, without a link or payment request.
+Response: {"success":true,"analysis":{"risk_level":0.1,"reasoning":"Tin nhắn này có rủi ro thấp vì không chứa liên kết độc hại, không yêu cầu thanh toán, không tạo cảm giác khẩn cấp và không yêu cầu thông tin nhạy cảm. Việc xác nhận địa chỉ giao hàng là một quy trình vận chuyển thông thường.","suggestions":["Không nhấp vào bất kỳ liên kết nào nếu sau này tin nhắn có gửi kèm.","Kiểm tra trạng thái đơn hàng trực tiếp trên ứng dụng hoặc trang web chính thức của đơn vị vận chuyển.","Không cung cấp thông tin cá nhân hoặc mã OTP cho bất kỳ ai qua tin nhắn."],"excerpts":{}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"low"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=48, message='Một khảo sát tự nhận là của công ty đề nghị bác xác nhận địa chỉ email trước khi gửi biểu mẫu.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 59, in test
+    case.assertLessEqual(analysis.risk_level, maximum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.7 not less than or equal to 0.65 : Input: Một khảo sát tự nhận là của công ty đề nghị bác xác nhận địa chỉ email trước khi gửi biểu mẫu.
+Response: {"success":true,"analysis":{"risk_level":0.7,"reasoning":"Việc yêu cầu xác nhận email trước khi tham gia khảo sát thường là chiêu trò thu thập thông tin cá nhân (phishing) hoặc xây dựng danh sách email để gửi thư rác. Các khảo sát giả mạo thường sử dụng danh nghĩa công ty để tạo lòng tin.","suggestions":["Không nhập địa chỉ email hoặc thông tin cá nhân vào các biểu mẫu từ nguồn không xác định.","Kiểm tra lại địa chỉ email người gửi hoặc trang web chính thức của công ty để xác minh khảo sát.","Nếu nghi ngờ, hãy xóa tin nhắn và không nhấp vào bất kỳ liên kết nào trong đó."],"excerpts":{"đề nghị bác xác nhận địa chỉ email trước khi gửi biểu mẫu":"Yêu cầu xác nhận thông tin cá nhân trước khi tham gia khảo sát là dấu hiệu phổ biến của hành vi thu thập dữ liệu trái phép."}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"high"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=51, message='Một số điện thoại nói họ là đồng nghiệp cũ và đề nghị bác xác nhận có thể gọi lại để trao đổi công việc.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 58, in test
+    case.assertGreaterEqual(analysis.risk_level, minimum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.3 not greater than or equal to 0.34 : Input: Một số điện thoại nói họ là đồng nghiệp cũ và đề nghị bác xác nhận có thể gọi lại để trao đổi công việc.
+Response: {"success":true,"analysis":{"risk_level":0.3,"reasoning":"Tin nhắn này có dấu hiệu của kỹ thuật 'social engineering' (kỹ thuật xã hội) cơ bản, nơi kẻ gian giả danh người quen để tạo lòng tin. Tuy nhiên, nội dung chưa chứa liên kết độc hại, yêu cầu tài chính hay thông tin nhạy cảm, nên mức độ rủi ro hiện tại ở mức thấp.","suggestions":["Không nên xác nhận hoặc cung cấp thông tin cá nhân ngay lập tức.","Hãy kiểm tra lại danh bạ hoặc liên hệ trực tiếp với đồng nghiệp cũ qua kênh liên lạc chính thức mà bạn đã biết.","Nếu người gọi tiếp tục thúc ép hoặc yêu cầu chuyển tiền/thông tin, hãy chặn số điện thoại đó."],"excerpts":{"họ là đồng nghiệp cũ":"Việc tự xưng là người quen mà không có bằng chứng xác thực là một thủ đoạn phổ biến để tạo lòng tin giả tạo."}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"low"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=54, message='The sender says a document is ready for collection and asks you to confirm a convenient time and delivery address.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 58, in test
+    case.assertGreaterEqual(analysis.risk_level, minimum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.2 not greater than or equal to 0.34 : Input: The sender says a document is ready for collection and asks you to confirm a convenient time and delivery address.
+Response: {"success":true,"analysis":{"risk_level":0.2,"reasoning":"Thông điệp này có vẻ là một yêu cầu giao hàng hoặc nhận tài liệu thông thường. Tuy nhiên, cần thận trọng nếu người gửi không xác định rõ danh tính hoặc nếu yêu cầu này không liên quan đến bất kỳ giao dịch nào bạn đang thực hiện.","suggestions":["Xác minh danh tính người gửi trước khi cung cấp bất kỳ thông tin cá nhân nào.","Không cung cấp địa chỉ nhà riêng nếu bạn không chắc chắn về nguồn gốc của tài liệu.","Nếu nghi ngờ, hãy liên hệ trực tiếp với tổ chức hoặc cá nhân mà bạn cho rằng đã gửi tài liệu thông qua kênh liên lạc chính thức."],"excerpts":{}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"low"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=55, message='Thông báo thay đổi chính sách bảo hành đề nghị bác xác nhận số seri sản phẩm để nhận thông tin chi tiết.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 59, in test
+    case.assertLessEqual(analysis.risk_level, maximum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.7 not less than or equal to 0.65 : Input: Thông báo thay đổi chính sách bảo hành đề nghị bác xác nhận số seri sản phẩm để nhận thông tin chi tiết.
+Response: {"success":true,"analysis":{"risk_level":0.7,"reasoning":"Thông điệp này có dấu hiệu lừa đảo giả mạo dịch vụ khách hàng. Việc yêu cầu người dùng cung cấp số seri sản phẩm để 'nhận thông tin chi tiết' thường là bước đầu tiên để kẻ gian thu thập thông tin cá nhân hoặc lừa đảo chiếm đoạt tài sản thông qua các trang web giả mạo.","suggestions":["Không cung cấp số seri sản phẩm hoặc bất kỳ thông tin cá nhân nào cho người gửi.","Liên hệ trực tiếp với tổng đài hỗ trợ chính thức của hãng sản xuất để xác minh thông tin.","Chặn số điện thoại hoặc tài khoản gửi tin nhắn này nếu không rõ nguồn gốc."],"excerpts":{"đề nghị bác xác nhận số seri sản phẩm để nhận thông tin chi tiết":"Yêu cầu cung cấp thông tin sản phẩm cụ thể để nhận thông tin là thủ đoạn phổ biến để dẫn dụ người dùng vào các trang web giả mạo."}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"high"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=57, message='Tin nhắn đề nghị bác xác nhận người nhận thay thế nếu đơn hàng hiện tại cần giao cho người khác.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 59, in test
+    case.assertLessEqual(analysis.risk_level, maximum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.8 not less than or equal to 0.65 : Input: Tin nhắn đề nghị bác xác nhận người nhận thay thế nếu đơn hàng hiện tại cần giao cho người khác.
+Response: {"success":true,"analysis":{"risk_level":0.8,"reasoning":"Tin nhắn này có dấu hiệu lừa đảo giả mạo dịch vụ giao hàng. Việc yêu cầu xác nhận người nhận thay thế thường là bước đầu để kẻ gian lừa người dùng cung cấp thông tin cá nhân hoặc dẫn dụ vào các trang web giả mạo để chiếm đoạt tài khoản.","suggestions":["Không nhấn vào bất kỳ đường link nào nếu có trong tin nhắn.","Liên hệ trực tiếp với đơn vị vận chuyển qua ứng dụng hoặc website chính thức của họ để kiểm tra tình trạng đơn hàng.","Tuyệt đối không cung cấp thông tin cá nhân hoặc mã OTP cho người lạ."],"excerpts":{"đề nghị bác xác nhận người nhận thay thế":"Yêu cầu xác nhận người nhận thay thế là một thủ đoạn phổ biến để lừa đảo chiếm đoạt thông tin hoặc tài sản."}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"high"}
+
+======================================================================
+FAIL: test_inputs_from_json (tests.test_live_api.LiveAnalyzeAPITests.test_inputs_from_json) (index=58, message='Cửa hàng nói có khoản hoàn tiền đang chờ và đề nghị bác xác nhận cách muốn nhận thêm thông tin.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/share/program/rewrite/tests/test_live_api.py", line 134, in test_inputs_from_json
+    await test(self)
+  File "/share/program/rewrite/tests/test_live_api.py", line 59, in test
+    case.assertLessEqual(analysis.risk_level, maximum_risk, context)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0.8 not less than or equal to 0.65 : Input: Cửa hàng nói có khoản hoàn tiền đang chờ và đề nghị bác xác nhận cách muốn nhận thêm thông tin.
+Response: {"success":true,"analysis":{"risk_level":0.8,"reasoning":"Thông báo về 'khoản hoàn tiền' là một chiêu trò lừa đảo phổ biến nhằm đánh vào tâm lý muốn nhận lại tiền của nạn nhân, thường dẫn đến việc yêu cầu cung cấp thông tin cá nhân hoặc tài khoản ngân hàng.","suggestions":["Không nhấp vào bất kỳ liên kết nào nếu có trong tin nhắn.","Liên hệ trực tiếp với cửa hàng thông qua kênh liên lạc chính thức (website hoặc số điện thoại trên trang chủ) để xác minh.","Tuyệt đối không cung cấp thông tin tài khoản ngân hàng hoặc mã OTP cho bất kỳ ai."],"excerpts":{"có khoản hoàn tiền đang chờ":"Đây là dấu hiệu điển hình của lừa đảo tài chính nhằm dụ dỗ nạn nhân thực hiện hành động theo ý kẻ gian."}},"deterministic_findings":[],"deterministic_risk_floor":"low","risk_level":"high"}
+
+----------------------------------------------------------------------
