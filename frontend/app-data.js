@@ -2,15 +2,15 @@
    This file holds constants, cached DOM refs, local datasets, and top-level
    mutable state so the behavior files can stay smaller. */
 const byId=id=>document.getElementById(id),query=(selector,root=document)=>root.querySelector(selector),queryAll=(selector,root=document)=>root.querySelectorAll(selector);
-const MIN_LENGTH=10,MAX_LENGTH=10000,DETECTIVE_MESSAGE_START_MS=180,DETECTIVE_MESSAGE_GAP_MS=650,MESSAGE_ANIMATION_MS=580,DRAFT_KEY='scamcheck-message-draft',OFFLINE_HISTORY_KEY='scamcheck-offline-history-v1',PENDING_ANALYSIS_KEY='scamcheck-pending-analysis-v1',MAX_OFFLINE_HISTORY=10;
+const MIN_LENGTH=10,MAX_LENGTH=10000,CHARACTER_MESSAGE_GAP_MS=1000,DRAFT_KEY='scamcheck-message-draft',OFFLINE_HISTORY_KEY='scamcheck-offline-history-v1',PENDING_ANALYSIS_KEY='scamcheck-pending-analysis-v1',MAX_OFFLINE_HISTORY=10;
 // Cache the DOM once so the rest of the code can stay shorter.
 const messageInput=byId('message'),clearButton=byId('clear-button'),checkButton=byId('check-button'),processingFrame=byId('processing-frame'),characterCount=byId('character-count'),feedback=byId('message-feedback'),usage=byId('usage'),connectivityStatus=byId('connectivity-status'),connectivityMessage=byId('connectivity-message'),voiceButton=byId('voice-button'),voiceButtonLabel=byId('voice-button-label'),voiceStatus=byId('voice-status'),inputFrame=byId('input-frame'),resultFrame=byId('result-frame'),riskCard=byId('risk-card'),riskLabel=byId('risk-label'),riskDescription=byId('risk-description'),signalList=byId('signal-list'),resultContextLabel=byId('result-context-label'),resultScrollButton=byId('result-scroll-button'),historyReturnButton=byId('history-return-button'),sampleButtons=queryAll('.sample-button'),historyList=byId('history-list'),historySelectedCount=byId('history-selected-count'),historyDeleteButton=byId('history-delete-button'),deleteConfirmModal=byId('delete-confirm-modal'),deleteConfirmText=byId('delete-confirm-text'),deletePreview=byId('delete-preview'),deleteCancelButton=byId('delete-cancel-button'),deleteConfirmButton=byId('delete-confirm-button');
-const psychologyBlock=byId('psychology-block'),psychologyMessage=byId('psychology-message'),actionSection=byId('action-section');
+const psychologyBlock=byId('psychology-block'),psychologyMessage=byId('psychology-message'),actionSection=byId('action-section'),postAnalysisQuestion=byId('post-analysis-question'),postAnalysisOptions=queryAll('.post-analysis-option'),responderBlock=byId('responder-block'),responderSteps=byId('responder-steps');
 const practiceContent=byId('practice-content'),practiceMessage=byId('practice-message'),practiceProgress=byId('practice-progress'),practiceScore=byId('practice-score'),practiceAnswerButtons=queryAll('.practice-answer-button'),practiceFeedback=byId('practice-feedback'),practiceNextButton=byId('practice-next-button');
 const libraryListFrame=byId('library-list-frame'),libraryDetailFrame=byId('library-detail-frame'),librarySearch=byId('library-search'),libraryFilters=queryAll('.library-filter'),libraryResultCount=byId('library-result-count'),libraryLoadError=byId('library-load-error'),libraryRetryButton=byId('library-retry-button'),scamTypeList=byId('scam-type-list'),libraryEmpty=byId('library-empty'),libraryResetButton=byId('library-reset-button'),libraryDetailBack=byId('library-detail-back'),libraryDetailError=byId('library-detail-error'),libraryDetailContent=byId('library-detail-content'),libraryDetailIcon=byId('library-detail-icon'),libraryDetailGroup=byId('library-detail-group'),libraryDetailTitle=byId('library-detail-title'),libraryDetailDescription=byId('library-detail-description'),libraryDetailSigns=byId('library-detail-signs'),libraryDetailExample=byId('library-detail-example'),libraryDetailDo=byId('library-detail-do'),libraryDetailDont=byId('library-detail-dont');
 const navLinks=queryAll('.nav-link[data-view]'),pageViews=queryAll('[data-view-panel]');
 const toolsColumn=query('.tools-column'),mobileQuickCards=queryAll('.sample-card'),mobileLayoutQuery=window.matchMedia('(max-width: 620px)');
-let recognition=null,isRecording=false,selectedHistoryIds=new Set(),isAnalyzing=false,sessionAtLimit=false,isOffline=!navigator.onLine,historyCache=[],psychologySequenceTimer=null;
+let recognition=null,isRecording=false,selectedHistoryIds=new Set(),isAnalyzing=false,sessionAtLimit=false,isOffline=!navigator.onLine,historyCache=[],messageRevealTimers=[];
 let autoFollowResult=true,latestResultMessage=null,lastResultScrollY=window.scrollY,resultScrollGuardUntil=0,resultTouchY=null;
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
 let scamTypes=[],scamTypesPromise=null,selectedScamGroup='all',libraryQuery='',libraryScrollPosition=0;
@@ -103,3 +103,76 @@ const librarySafeActions=['Bình tĩnh, dừng lại và kiểm tra yêu cầu q
 const libraryUnsafeActions=['Không cung cấp mật khẩu, mã OTP hoặc thông tin thẻ.','Không chuyển tiền theo yêu cầu của người lạ.','Không cài ứng dụng từ đường link hoặc tệp không rõ nguồn gốc.','Không bấm vào đường link đáng ngờ trong tin nhắn.'];
 const normalizedValue=()=>messageInput.value.replace(/\s+/g,' ').trim();
 const viewTitles={analyze:'Kiểm tra',library:'Thư viện lừa đảo',history:'Lịch sử',practice:'Luyện tập'};
+const psychologyEmojiRules=[
+  {pattern:/dừng|không làm theo|không chuyển|đừng vội/i,emoji:'🛑'},
+  {pattern:/xác minh|kiểm tra|đối chiếu|nguồn chính thức/i,emoji:'🔎'},
+  {pattern:/liên hệ|gọi|ngân hàng|người thân/i,emoji:'📞'},
+  {pattern:/bình tĩnh|chậm lại|hít thở|thở sâu/i,emoji:'🌿'},
+  {pattern:/lo lắng|sợ hãi|hoang mang|áp lực|thúc giục/i,emoji:'🫶'},
+  {pattern:/an toàn|bảo vệ|giữ mình/i,emoji:'🛡️'}
+];
+const rescuePlans={
+  none:{
+    suspicious:[
+      'Dừng trả lời người gửi và không làm theo yêu cầu trong tin nhắn.',
+      'Không bấm liên kết, mở tệp hoặc gọi số điện thoại do người gửi cung cấp.',
+      'Xác minh sự việc qua ứng dụng, trang web hoặc số điện thoại chính thức của đơn vị liên quan.',
+      'Chụp màn hình, lưu thông tin người gửi rồi chặn và báo cáo tài khoản.'
+    ],
+    dangerous:[
+      'Dừng toàn bộ liên lạc với người gửi ngay.',
+      'Không bấm liên kết, mở tệp, chuyển tiền hoặc cung cấp bất kỳ mã xác thực nào.',
+      'Chụp màn hình và lưu lại tin nhắn, số điện thoại, tài khoản cùng thời điểm nhận.',
+      'Liên hệ đơn vị bị mạo danh bằng kênh chính thức để xác minh.',
+      'Chặn và báo cáo tài khoản gửi tin nhắn.'
+    ]
+  },
+  'opened-link':{
+    suspicious:[
+      'Đóng trang vừa mở và dừng mọi lượt tải xuống.',
+      'Kiểm tra thư mục tải xuống và xóa tệp lạ khi chưa mở tệp.',
+      'Quét bảo mật thiết bị và kiểm tra ứng dụng hoặc cấu hình lạ vừa được thêm.',
+      'Đổi ngay mật khẩu liên quan bằng một thiết bị an toàn nếu bác đã nhập thông tin đăng nhập.',
+      'Theo dõi đăng nhập và giao dịch bất thường trên các tài khoản liên quan.'
+    ],
+    dangerous:[
+      'Đóng trang, ngắt lượt tải xuống và không mở bất kỳ tệp nào từ liên kết.',
+      'Ngắt kết nối mạng nếu thiết bị vừa cài ứng dụng, cấu hình hoặc cấp quyền điều khiển.',
+      'Gỡ ứng dụng hoặc cấu hình lạ rồi quét toàn bộ thiết bị bằng công cụ bảo mật tin cậy.',
+      'Đổi mật khẩu từ một thiết bị an toàn và đăng xuất tất cả phiên đang hoạt động.',
+      'Liên hệ ngay ngân hàng bằng số chính thức nếu bác đã nhập thông tin tài chính.'
+    ]
+  },
+  'shared-info':{
+    suspicious:[
+      'Đổi ngay mật khẩu của tài khoản đã cung cấp và bật xác thực hai lớp.',
+      'Đăng xuất tất cả phiên đang hoạt động và thu hồi quyền truy cập lạ.',
+      'Liên hệ đơn vị quản lý tài khoản bằng kênh chính thức để báo lộ thông tin.',
+      'Theo dõi cảnh báo đăng nhập, thay đổi hồ sơ và giao dịch bất thường.',
+      'Lưu lại tin nhắn cùng thông tin người gửi để báo cáo khi cần.'
+    ],
+    dangerous:[
+      'Khóa tạm thời tài khoản, thẻ hoặc dịch vụ có thông tin đã bị lộ.',
+      'Đổi toàn bộ mật khẩu liên quan từ một thiết bị an toàn và bật xác thực hai lớp.',
+      'Đăng xuất mọi phiên đang hoạt động và thu hồi thiết bị hoặc ứng dụng không nhận ra.',
+      'Liên hệ ngay ngân hàng hoặc đơn vị quản lý bằng số chính thức để lập cảnh báo gian lận.',
+      'Lưu bằng chứng và báo cáo sự việc cho cơ quan chức năng.'
+    ]
+  },
+  'sent-money':{
+    suspicious:[
+      'Gọi ngay ngân hàng hoặc dịch vụ chuyển tiền bằng số chính thức để yêu cầu chặn hoặc thu hồi giao dịch.',
+      'Khóa tạm thời tài khoản thanh toán và đổi mật khẩu đăng nhập.',
+      'Lưu biên lai, mã giao dịch, tin nhắn và thông tin tài khoản nhận tiền.',
+      'Báo cáo giao dịch gian lận cho ngân hàng và cơ quan chức năng.',
+      'Không chuyển thêm tiền cho bất kỳ lời hứa hoàn tiền hoặc hỗ trợ thu hồi nào.'
+    ],
+    dangerous:[
+      'Gọi ngay ngân hàng hoặc dịch vụ chuyển tiền bằng số chính thức để yêu cầu phong tỏa và thu hồi giao dịch.',
+      'Khóa thẻ, tài khoản thanh toán và đổi mật khẩu từ một thiết bị an toàn.',
+      'Lưu đầy đủ biên lai, mã giao dịch, nội dung trao đổi và thông tin tài khoản nhận tiền.',
+      'Trình báo ngay với cơ quan chức năng và cung cấp toàn bộ bằng chứng.',
+      'Dừng mọi khoản chuyển tiếp theo và không trả phí cho người tự nhận có thể lấy lại tiền.'
+    ]
+  }
+};

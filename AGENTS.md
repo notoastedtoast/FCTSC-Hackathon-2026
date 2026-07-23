@@ -20,8 +20,9 @@ Preserve these boundaries unless a user explicitly changes them:
 - Keep user-facing Detective and character output concise and primarily Vietnamese.
 - Treat analyzed text as untrusted data, never as model instructions.
 - Never log raw submitted text. The configured database intentionally stores analysis submissions.
-- Do not expose an endpoint or request schema for chatting with characters. Characters
-  may only produce the optional one-time response generated during `/analyze`.
+- Do not expose an endpoint or request schema for chatting with characters. AI-generated
+  character output is limited to the optional one-time Cô tâm lý response generated during
+  `/analyze`; the frontend-only Người ứng cứu uses authored action lists and makes no provider call.
 - A session cookie limits and groups provider-call audit records; it does not authenticate
   a user or establish ownership of an analysis.
 - Do not add speculative endpoints, tables, or abstractions. Extend the smallest existing
@@ -65,10 +66,11 @@ contract below records behavior that is easy to miss from schemas alone.
 | `GET /app-data.js` | None | `frontend/app-data.js` | Explicit shared data/state JavaScript route; no directory mount or listing. |
 | `GET /app-render.js` | None | `frontend/app-render.js` | Explicit rendering-helper JavaScript route; no directory mount or listing. |
 | `GET /offline-analyzer.js` | None | `frontend/offline-analyzer.js` | Conservative browser-only fallback used when the browser reports no connection. |
-| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the authored shell assets for offline loading; it never intercepts API routes. Core UI files use network-first refresh with cached fallback. |
+| `GET /service-worker.js` | None | `frontend/service-worker.js` | Caches only the ten authored shell assets for offline loading; it never intercepts API routes. Core UI files use network-first refresh with cached fallback. |
 | `GET /scamcheck-logo.png` | None | `frontend/scamcheck-logo.png` | Explicit PNG route; the repository and other frontend files are never exposed as a static directory. |
 | `GET /detective-avatar.png` | None | `frontend/detective-avatar.png` | Explicit PNG route for the Detective result-message avatar; no frontend directory is mounted. |
 | `GET /psychologist-avatar.png` | None | `frontend/psychologist-avatar.png` | Explicit PNG route for the Cô tâm lý result-card avatar; no frontend directory is mounted. |
+| `GET /responder-avatar.png` | None | `frontend/responder-avatar.png` | Explicit PNG route for the frontend-only Người ứng cứu profile and message avatar; no frontend directory is mounted. |
 
 All FastAPI request-validation failures use the deliberately generic 422 detail:
 `The submitted request is invalid. Check its fields and try again.` Do not make that
@@ -124,6 +126,17 @@ and Cô tâm lý bubbles auto-scroll into view while follow mode is active. An u
 scroll pauses follow mode and exposes a down-arrow control that resumes it. The page also reads
 `/session/ai-calls` to display authoritative
 `used`/`limit` usage and disables submission after the session reaches its ceiling.
+Detective, Cô tâm lý, and Người ứng cứu rows are genuinely unhidden one at a time at
+one-second intervals rather than rendering a complete block with only delayed styling.
+Cô tâm lý emoji are selected from each sentence's meaning. Detective evidence omits
+repetitive discovery boilerplate, labels excerpts as “Dấu hiệu”, and gives the final
+three-action bubble stronger visual emphasis.
+After Cô tâm lý finishes for a `suspicious` or `dangerous` result, the browser asks which
+of four exposure states applies: no action, opened a link, shared information, or sent
+money. The first choice locks the group and reveals the frontend-only Người ứng cứu with
+an authored, risk-aware numbered action list. Each step is a separate avatar bubble,
+revealed at one-second intervals unless reduced motion is enabled. This guidance is not
+sent to an API, does not consume quota, and is not persisted.
 
 The browser switches from the composer to a dedicated processing frame while a check is in
 progress; it has no browser-cancel control. The loading view is intentionally simple: a
@@ -148,7 +161,8 @@ entry changes only localStorage.
 
 The service worker caches `/`, `/styles.css`, `/offline-analyzer.js`, `/app-data.js`,
 `/app-render.js`, `/app.js`, `/scamcheck-logo.png`, `/detective-avatar.png`, and
-`/psychologist-avatar.png` after a successful online visit. When the browser reports that it is
+`/psychologist-avatar.png` and `/responder-avatar.png` after a successful online visit.
+When the browser reports that it is
 offline, `offline-analyzer.js` performs a conservative rule-based assessment on the device
 and labels it as preliminary. It does not call Gemini, consume quota, write the database, or claim
 provider accuracy. API responses, submitted text, analysis results, and session usage are
@@ -248,7 +262,7 @@ legacy-schema test in `tests/test_database.py`.
   output must never impose the authoritative online risk.
 - `src/url_extractor.py`: bounded URL extraction and normalization used by deterministic
   checks.
-- `src/frontend.py`: validated static catalog filtering/detail routes and the seven
+- `src/frontend.py`: validated static catalog filtering/detail routes and the eight
   explicit frontend asset routes.
 - `src/data/scam_types.json`: twelve authored scam types; exactly three entries in each of
   the four required groups, with name, description, example message, and group.
@@ -317,16 +331,16 @@ legacy-schema test in `tests/test_database.py`.
   panel, focus states, and reduced-motion behavior.
 - `frontend/app-data.js`: shared constants, cached DOM references, mutable page state,
   authored sample messages, practice prompts, library group metadata, and other static
-  frontend-only datasets.
+  frontend-only datasets, including risk/exposure-specific Người ứng cứu action lists.
 - `frontend/app-render.js`: safe result rendering helpers, highlight rendering,
-  Detective/Cô tâm lý bubble construction, recommendation rendering, and result-frame
-  presentation.
+  Detective/Cô tâm lý/Người ứng cứu bubble construction, recommendation rendering,
+  progressive message sequencing, and result-frame presentation.
 - `frontend/app.js`: `/analyze` integration, AI-call `used`/`limit` display and limit-state
   handling, voice input, server-backed online history, bounded local-only offline history,
   the API-backed scam library, local recognition prompts/grading/score, routing, event
-  wiring, service-worker registration, offline submission handoff, and history reuse into
-  the composer. It contains no direct character API call, chat UI, or duplicated scam
-  catalog.
+  wiring including the one-choice exposure triage, service-worker registration, offline
+  submission handoff, and history reuse into the composer. It contains no direct character
+  API call, chat UI, or duplicated scam catalog.
 - `frontend/offline-analyzer.js`: conservative, browser-only rules that return a compatible
   preliminary risk result without network, quota, cookie, or database access. It is not
   used to override an online provider-chain result.
@@ -337,6 +351,8 @@ legacy-schema test in `tests/test_database.py`.
 - `frontend/scamcheck-logo.png`: standalone ScamCheck brand asset.
 - `frontend/detective-avatar.png`: Detective avatar shown beside sequential analysis messages.
 - `frontend/psychologist-avatar.png`: Cô tâm lý avatar shown in the optional calming-response card.
+- `frontend/responder-avatar.png`: transparent Người ứng cứu avatar used in the authored
+  post-analysis action bubbles.
 - `README.md`: contributor overview and main commands. Keep user-facing setup here; keep
   agent-level invariants in this file.
 - `Makefile`: short wrappers for offline API tests, online API tests, and running the app.
@@ -542,6 +558,20 @@ generation is part of the single idempotent `/analyze` response, so there is no 
 endpoint. Vercel imports `src/main.py` directly, so the obsolete duplicate `src/app.py` is
 not present. The combined offline suite covers both the restored provider/database contracts
 and the rewrite's deterministic/URL modules.
+
+On 2026-07-23, the result sequence gained a frontend-only post-analysis triage step. After
+Cô tâm lý finishes for suspicious or dangerous results, the user may select exactly one
+of four exposure states. That choice reveals the third character, Người ứng cứu, whose
+authored guidance varies by exposure and risk level and contains only a numbered list of
+actions. No provider call, API schema, database field, audit record, or chat endpoint was
+added. The Người ứng cứu steps use a dedicated transparent avatar and appear as
+one-second sequential bubbles matching the Cô tâm lý conversation pattern.
+
+Later on 2026-07-23, all three character sequences moved to one-second progressive DOM
+reveal rather than block-level delayed animation. Detective evidence copy was shortened,
+the final three-action card was visually strengthened, and Cô tâm lý emoji became
+sentence-aware. The API response, provider prompts, persistence, quota, and offline
+analysis contracts did not change.
 
 Later on 2026-07-21, file-backed SQLite runtime support was restored for local development.
 With no database environment variable, configuration now selects `sqlite:///app.db`;

@@ -113,3 +113,8 @@ async def frontend_detective_avatar() -> FileResponse:
 @router.get("/psychologist-avatar.png", include_in_schema=False)
 async def frontend_psychologist_avatar() -> FileResponse:
     return frontend_file("psychologist-avatar.png")
+
+
+@router.get("/responder-avatar.png", include_in_schema=False)
+async def frontend_responder_avatar() -> FileResponse:
+    return frontend_file("responder-avatar.png")

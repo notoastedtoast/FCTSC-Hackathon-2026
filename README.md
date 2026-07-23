@@ -11,6 +11,10 @@ Right now, the checked-in code uses:
 - session-based online history
 - an offline browser fallback when the device has no network
 
+For suspicious or dangerous results, the frontend can follow Cô tâm lý with a
+one-choice exposure check and then show authored “Người ứng cứu” steps. This part
+runs in the browser only; it does not call AI or save the exposure selection.
+
 ## Current stack
 
 - Backend: Python 3.14, FastAPI, Pydantic, HTTPX
@@ -203,7 +207,7 @@ frontend/
   scamcheck-logo.png
   detective-avatar.png
   psychologist-avatar.png
-
+  responder-avatar.png    Người ứng cứu action-bubble avatar
 src/
   main.py
   frontend.py

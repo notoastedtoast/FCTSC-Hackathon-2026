@@ -60,10 +60,6 @@ function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=nul
   const messageOrder=signalList.childElementCount;
   const row=document.createElement('div');
   row.className=`detective-message-row ${messageOrder===0?'summary-message':'evidence-message'}`;
-  row.style.setProperty(
-    '--message-delay',
-    `${DETECTIVE_MESSAGE_START_MS+messageOrder*DETECTIVE_MESSAGE_GAP_MS}ms`
-  );
   const avatar=document.createElement('img');
   avatar.className='detective-message-avatar';
   avatar.src='/detective-avatar.png';
@@ -75,9 +71,13 @@ function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=nul
   card.className='signal-card detective-message-bubble';
   const title=document.createElement('h3');
   title.textContent=titleText;
-  const explanation=document.createElement('p');
-  explanation.textContent=explanationText;
-  card.append(title,explanation);
+  card.appendChild(title);
+
+  if(explanationText){
+    const explanation=document.createElement('p');
+    explanation.textContent=explanationText;
+    card.appendChild(explanation);
+  }
 
   if(badgeText){
     const badge=document.createElement('span');
@@ -89,7 +89,7 @@ function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=nul
   if(quoteText){
     const quote=document.createElement('p');
     quote.className='quote';
-    quote.textContent=`Đoạn liên quan: “${quoteText}”`;
+    quote.textContent=`Dấu hiệu: “${quoteText}”`;
     card.appendChild(quote);
   }
   row.append(avatar,card);
@@ -98,13 +98,8 @@ function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=nul
 }
 
 function appendOriginalMessageCard(text,excerpts,shouldHighlight){
-  const messageOrder=signalList.childElementCount;
   const row=document.createElement('div');
   row.className='detective-message-row original-message-row';
-  row.style.setProperty(
-    '--message-delay',
-    `${DETECTIVE_MESSAGE_START_MS+messageOrder*DETECTIVE_MESSAGE_GAP_MS}ms`
-  );
   const avatar=document.createElement('img');
   avatar.className='detective-message-avatar';
   avatar.src='/detective-avatar.png';
@@ -131,40 +126,28 @@ function appendOriginalMessageCard(text,excerpts,shouldHighlight){
   return card;
 }
 
+function revealPostAnalysisQuestion(){
+  if(postAnalysisQuestion.dataset.eligible!=='true')return;
+  postAnalysisQuestion.hidden=false;
+  revealResultMessage(postAnalysisQuestion);
+}
+
 function revealPsychologyMessages(){
   if(psychologyMessage.childElementCount===0)return;
   actionSection.hidden=false;
   psychologyBlock.hidden=false;
-  void psychologyMessage.offsetWidth;
-  psychologyBlock.classList.add('message-sequence-playing');
+  revealRowsSequentially(
+    psychologyMessage.querySelectorAll('.psychology-message-row'),
+    {onComplete:revealPostAnalysisQuestion}
+  );
 }
 
 function playMessageSequence(){
-  if(psychologySequenceTimer!==null){
-    window.clearTimeout(psychologySequenceTimer);
-    psychologySequenceTimer=null;
-  }
-  resultFrame.classList.remove('message-sequence-playing');
-  psychologyBlock.classList.remove('message-sequence-playing');
-  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-    revealPsychologyMessages();
-    const visibleMessages=[...resultFrame.querySelectorAll(
-      '.detective-message-row,.psychology-message-row'
-    )].filter(message=>message.offsetParent!==null);
-    revealResultMessage(visibleMessages.at(-1)||null);
-    return;
-  }
-  void signalList.offsetWidth;
-  resultFrame.classList.add('message-sequence-playing');
-  if(psychologyMessage.childElementCount===0)return;
-  const detectiveMessageCount=Math.max(1,signalList.childElementCount);
-  const detectiveSequenceMs=DETECTIVE_MESSAGE_START_MS+
-    (detectiveMessageCount-1)*DETECTIVE_MESSAGE_GAP_MS+
-    MESSAGE_ANIMATION_MS;
-  psychologySequenceTimer=window.setTimeout(()=>{
-    psychologySequenceTimer=null;
-    revealPsychologyMessages();
-  },detectiveSequenceMs);
+  clearMessageRevealTimers();
+  revealRowsSequentially(
+    signalList.querySelectorAll('.detective-message-row'),
+    {onComplete:revealPsychologyMessages}
+  );
 }
 
 const deterministicRuleLabels={
@@ -177,7 +160,7 @@ const deterministicRuleLabels={
 function renderDeterministicFindings(findings){
   findings.forEach(finding=>appendSignalCard(
     deterministicRuleLabels[finding.kind]||finding.kind,
-    'Dấu hiệu này được tìm thấy trong nội dung đã gửi.',
+    null,
     finding.excerpt
   ));
 }
@@ -206,7 +189,7 @@ function renderSignals(detective,deterministicFindings=[],originalText=''){
     evidence.forEach(item=>{
       appendSignalCard(
         item.label,
-        'Dấu hiệu này được tìm thấy trong nội dung đã gửi.',
+        null,
         item.excerpt
       );
     });
@@ -214,7 +197,7 @@ function renderSignals(detective,deterministicFindings=[],originalText=''){
     const indicators=Array.isArray(detective.indicators)?detective.indicators:[];
     if(indicators.length){
       indicators.forEach(indicator=>{
-        appendSignalCard(indicator,'Dấu hiệu này được Thám tử phát hiện trong nội dung.');
+        appendSignalCard(indicator,null);
       });
     }else{
       appendSignalCard(
@@ -237,6 +220,8 @@ function renderRecommendations(actions){
     'Ba hành động nên làm ngay',
     'Bác hãy ưu tiên ba bước an toàn này trước khi phản hồi.'
   );
+  card.classList.add('recommendations-card');
+  card.closest('.detective-message-row')?.classList.add('recommendations-message');
   const list=document.createElement('div');
   list.className='recommendations';
   defaults.forEach((fallback,index)=>{
@@ -282,11 +267,13 @@ function splitPsychologyMessage(message){
   return parts.slice(0,3);
 }
 
-function appendPsychologyMessage(message,index){
-  const emojis=['🫶','🌿','🛡️'];
+function psychologyEmojiFor(message){
+  return psychologyEmojiRules.find(rule=>rule.pattern.test(message))?.emoji||'💜';
+}
+
+function appendPsychologyMessage(message){
   const row=document.createElement('div');
   row.className='psychology-message-row';
-  row.style.setProperty('--message-delay',`${index*DETECTIVE_MESSAGE_GAP_MS}ms`);
   const avatar=document.createElement('img');
   avatar.className='psychology-message-avatar';
   avatar.src='/psychologist-avatar.png';
@@ -300,7 +287,7 @@ function appendPsychologyMessage(message,index){
   paragraph.className='psychology-message';
   const emoji=document.createElement('span');
   emoji.className='psychology-message-emoji';
-  emoji.textContent=emojis[index]||'💚';
+  emoji.textContent=psychologyEmojiFor(message);
   emoji.setAttribute('aria-hidden','true');
   const text=document.createElement('span');
   text.textContent=message;
@@ -314,9 +301,18 @@ function renderPsychology(payload){
   const riskLevel=payload?.detective?.risk_level;
   const shouldShow=riskLevel==='suspicious'||riskLevel==='dangerous';
   psychologyMessage.replaceChildren();
+  postAnalysisQuestion.hidden=true;
+  postAnalysisQuestion.dataset.eligible=String(shouldShow);
+  postAnalysisQuestion.dataset.riskLevel=riskLevel||'suspicious';
+  responderBlock.hidden=true;
+  responderSteps.replaceChildren();
+  postAnalysisOptions.forEach(option=>{
+    option.disabled=false;
+    option.classList.remove('selected');
+    option.setAttribute('aria-pressed','false');
+  });
   actionSection.hidden=true;
   psychologyBlock.hidden=true;
-  psychologyBlock.classList.remove('message-sequence-playing');
   if(!shouldShow){
     return;
   }
@@ -329,6 +325,32 @@ function renderPsychology(payload){
     message='Cô tâm lý chưa thể gửi lời nhắn bổ sung lúc này; bác xem hướng dẫn an toàn bên dưới nhé.';
   }
   splitPsychologyMessage(message).forEach(appendPsychologyMessage);
+}
+
+function renderResponderGuidance(choice,riskLevel){
+  const normalizedRisk=riskLevel==='dangerous'?'dangerous':'suspicious';
+  const steps=rescuePlans[choice]?.[normalizedRisk]||rescuePlans.none[normalizedRisk];
+  const items=steps.map(step=>{
+    const row=document.createElement('li');
+    row.className='responder-message-row';
+    const avatar=document.createElement('img');
+    avatar.className='responder-message-avatar';
+    avatar.src='/responder-avatar.png';
+    avatar.alt='';
+    avatar.width=40;
+    avatar.height=40;
+    avatar.setAttribute('aria-hidden','true');
+    const bubble=document.createElement('article');
+    bubble.className='responder-message-bubble';
+    const text=document.createElement('span');
+    text.textContent=step;
+    bubble.appendChild(text);
+    row.append(avatar,bubble);
+    return row;
+  });
+  responderSteps.replaceChildren(...items);
+  responderBlock.hidden=false;
+  revealRowsSequentially(items);
 }
 
 function showResultFrame(text,payload,{fromHistory=false}={}){

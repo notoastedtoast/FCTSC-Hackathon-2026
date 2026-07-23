@@ -97,7 +97,7 @@ function resumeResultAutoFollow(){
   autoFollowResult=true;
   updateResultScrollButton();
   const visibleMessages=[...resultFrame.querySelectorAll(
-    '.detective-message-row,.psychology-message-row'
+    '.detective-message-row,.psychology-message-row,.responder-message-row'
   )].filter(message=>message.offsetParent!==null);
   latestResultMessage=latestResultMessage||visibleMessages.at(-1)||null;
   scrollToResultMessage(latestResultMessage,{force:true});
@@ -119,13 +119,48 @@ function handleResultWindowScroll(){
   lastResultScrollY=currentScrollY;
 }
 
-function showComposerFrame(){
-  if(psychologySequenceTimer!==null){
-    window.clearTimeout(psychologySequenceTimer);
-    psychologySequenceTimer=null;
+function clearMessageRevealTimers(){
+  messageRevealTimers.forEach(timer=>window.clearTimeout(timer));
+  messageRevealTimers=[];
+}
+
+function revealRowsSequentially(rows,{onComplete=null}={}){
+  const messages=[...rows];
+  const reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  messages.forEach(message=>{
+    message.hidden=!reduceMotion;
+    message.classList.remove('message-revealing');
+  });
+  if(reduceMotion){
+    revealResultMessage(messages.at(-1)||null);
+    if(onComplete)onComplete();
+    return;
   }
+  if(messages.length===0){
+    if(onComplete)onComplete();
+    return;
+  }
+  messages.forEach((message,index)=>{
+    const timer=window.setTimeout(()=>{
+      message.hidden=false;
+      void message.offsetWidth;
+      message.classList.add('message-revealing');
+      revealResultMessage(message);
+      if(index===messages.length-1&&onComplete){
+        const completionTimer=window.setTimeout(
+          onComplete,
+          CHARACTER_MESSAGE_GAP_MS
+        );
+        messageRevealTimers.push(completionTimer);
+      }
+    },index*CHARACTER_MESSAGE_GAP_MS);
+    messageRevealTimers.push(timer);
+  });
+}
+
+function showComposerFrame(){
+  clearMessageRevealTimers();
   processingFrame.hidden=true;
-  psychologyBlock.classList.remove('message-sequence-playing');
   resultFrame.classList.remove('active');
   latestResultMessage=null;
   autoFollowResult=true;
@@ -135,10 +170,7 @@ function showComposerFrame(){
 }
 
 function showProcessingFrame(){
-  if(psychologySequenceTimer!==null){
-    window.clearTimeout(psychologySequenceTimer);
-    psychologySequenceTimer=null;
-  }
+  clearMessageRevealTimers();
   inputFrame.style.display='none';
   resultFrame.classList.remove('active');
   resultScrollButton.hidden=true;
@@ -643,6 +675,18 @@ messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
 clearButton.addEventListener('click',()=>{messageInput.value='';saveDraft();messageInput.focus();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
+postAnalysisOptions.forEach(option=>option.addEventListener('click',()=>{
+  if(option.disabled)return;
+  postAnalysisOptions.forEach(item=>{
+    item.disabled=true;
+    item.classList.toggle('selected',item===option);
+    item.setAttribute('aria-pressed',String(item===option));
+  });
+  renderResponderGuidance(
+    option.dataset.postAnalysisChoice,
+    postAnalysisQuestion.dataset.riskLevel
+  );
+}));
 historyDeleteButton.addEventListener('click',openDeleteConfirmation);
 deleteCancelButton.addEventListener('click',closeDeleteConfirmation);
 deleteConfirmButton.addEventListener('click',confirmDeleteSelectedHistory);
@@ -960,11 +1004,6 @@ historyReturnButton.addEventListener('click',()=>{
   switchView('history',{focus:true});
 });
 resultScrollButton.addEventListener('click',resumeResultAutoFollow);
-resultFrame.addEventListener('animationstart',event=>{
-  if(event.animationName!=='detective-message-in')return;
-  if(!event.target.matches('.detective-message-row,.psychology-message-row'))return;
-  revealResultMessage(event.target);
-});
 window.addEventListener('scroll',handleResultWindowScroll,{passive:true});
 window.addEventListener('wheel',event=>{
   if(event.deltaY<0)pauseResultAutoFollow();

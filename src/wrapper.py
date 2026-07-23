@@ -93,7 +93,7 @@ class GeminiWrapper:
                 )
                 self.key_index = (self.key_index + 1) % len(self.api_keys)
                 await asyncio.sleep(DELAY * (2 ** i))
-            
+
             if i == 2 or resp.elapsed.total_seconds() > self.timeout:
                 _ = resp.raise_for_status()
 
