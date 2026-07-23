@@ -62,25 +62,9 @@ function renderRemainingAnalyses(){
   usage.textContent=`Số lượt phân tích còn lại: ${remainingAnalyses} lần`;
 }
 
-function saveRemainingAnalyses(){
-  try{
-    sessionStorage.setItem(ANALYSIS_REMAINING_KEY,String(remainingAnalyses));
-  }catch(error){
-    // Keep the in-memory counter when tab storage is unavailable.
-  }
-}
-
-function restoreRemainingAnalyses(){
-  try{
-    const storedValue=sessionStorage.getItem(ANALYSIS_REMAINING_KEY);
-    const saved=storedValue===null?ANALYSIS_LIMIT:Number(storedValue);
-    if(Number.isInteger(saved)&&saved>=0&&saved<=ANALYSIS_LIMIT){
-      remainingAnalyses=saved;
-    }
-  }catch(error){
-    remainingAnalyses=ANALYSIS_LIMIT;
-  }
-  sessionAtLimit=remainingAnalyses===0;
+function resetRemainingAnalysesOnReload(){
+  remainingAnalyses=ANALYSIS_LIMIT;
+  sessionAtLimit=false;
   renderRemainingAnalyses();
 }
 
@@ -88,7 +72,6 @@ function decrementRemainingAnalyses(){
   if(isOffline||remainingAnalyses===0)return;
   remainingAnalyses=Math.max(0,remainingAnalyses-1);
   sessionAtLimit=remainingAnalyses===0;
-  saveRemainingAnalyses();
   renderRemainingAnalyses();
 }
 
@@ -311,6 +294,8 @@ function revealRowsSequentially(rows,{onComplete=null}={}){
 
 function showComposerFrame(){
   clearMessageRevealTimers();
+  downloadResultImageButton.disabled=true;
+  resultImageStatus.textContent='';
   processingFrame.hidden=true;
   resultFrame.classList.remove('active');
   latestResultMessage=null;
@@ -322,6 +307,9 @@ function showComposerFrame(){
 
 function showProcessingFrame(){
   clearMessageRevealTimers();
+  currentShareSummary=null;
+  downloadResultImageButton.disabled=true;
+  resultImageStatus.textContent='';
   inputFrame.style.display='none';
   resultFrame.classList.remove('active');
   resultScrollButton.hidden=true;
@@ -744,7 +732,6 @@ function applyUsage(aiUsage){
   sessionAtLimit=limit>0&&used>=limit;
   if(sessionAtLimit){
     remainingAnalyses=0;
-    saveRemainingAnalyses();
   }
   renderRemainingAnalyses();
 }
@@ -837,6 +824,26 @@ postAnalysisOptions.forEach(option=>option.addEventListener('click',()=>{
     postAnalysisQuestion.dataset.riskLevel
   );
 }));
+downloadResultImageButton.addEventListener('click',async()=>{
+  downloadResultImageButton.disabled=true;
+  resultImageStatus.textContent='Đang tạo ảnh PNG…';
+  try{
+    const outcome=await saveCurrentResultImage();
+    if(outcome==='shared'){
+      resultImageStatus.textContent='Đã mở bảng chia sẻ. Trên iPhone, chọn “Lưu hình ảnh” để đưa ảnh vào thư viện Ảnh.';
+    }else if(outcome==='preview'){
+      resultImageStatus.textContent='Ảnh đã được mở. Trên iPhone, chạm và giữ ảnh rồi chọn “Lưu vào Ảnh”.';
+    }else if(outcome==='cancelled'){
+      resultImageStatus.textContent='Đã đóng bảng chia sẻ; ảnh chưa được lưu.';
+    }else{
+      resultImageStatus.textContent='Đã tải ảnh PNG về thiết bị.';
+    }
+  }catch(error){
+    resultImageStatus.textContent='Chưa thể tạo ảnh lúc này. Bác vui lòng thử lại.';
+  }finally{
+    downloadResultImageButton.disabled=false;
+  }
+});
 historyDeleteButton.addEventListener('click',openDeleteConfirmation);
 deleteCancelButton.addEventListener('click',closeDeleteConfirmation);
 deleteConfirmButton.addEventListener('click',confirmDeleteSelectedHistory);
@@ -933,7 +940,8 @@ async function runAnalysis(submittedText){
           method:'POST',
           headers:{
             'Content-Type':'application/json',
-            'X-ScamCheck-Request-ID':pending.requestId
+            'X-ScamCheck-Request-ID':pending.requestId,
+            'X-ScamCheck-Page-Session':PAGE_ANALYSIS_SESSION_ID
           },
           body:JSON.stringify({text:submittedText,source:'web'})
         });
@@ -969,7 +977,6 @@ async function runAnalysis(submittedText){
       if(error.status===429){
         sessionAtLimit=true;
         remainingAnalyses=0;
-        saveRemainingAnalyses();
         renderRemainingAnalyses();
       }
       if(navigator.onLine)connectivityStatus.hidden=true;
@@ -1186,4 +1193,4 @@ window.addEventListener('online',updateConnectivityState);
 window.addEventListener('offline',updateConnectivityState);
 window.addEventListener('hashchange',()=>syncRoute({focus:true}));
 if(!window.location.hash)window.history.replaceState(null,'','#analyze');
-restoreRemainingAnalyses();restoreDraft();setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();syncRoute();
+resetRemainingAnalysesOnReload();restoreDraft();setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();syncRoute();

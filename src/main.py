@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import Body, Cookie, Depends, FastAPI, HTTPException, Response
+from fastapi import Body, Cookie, Depends, FastAPI, Header, HTTPException, Response
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -30,6 +30,7 @@ settings = Settings.from_environment()
 database = HistoryDatabase(":memory:")
 client = GeminiWrapper.from_settings(settings)
 session_call_counts: dict[str, int] = {}
+session_page_ids: dict[str, str] = {}
 
 
 def get_client() -> GeminiWrapper:
@@ -39,10 +40,20 @@ def get_client() -> GeminiWrapper:
 ClientDep = Annotated[GeminiWrapper, Depends(get_client)]
 
 
-def consume_ai_call(response: Response, session_id: str | None) -> str:
+def consume_ai_call(
+    response: Response,
+    session_id: str | None,
+    page_session_id: str | None = None,
+) -> str:
     if session_id is None:
         session_id = str(uuid4())
         response.set_cookie("session_id", session_id, httponly=True, samesite="lax")
+    if (
+        page_session_id is not None
+        and session_page_ids.get(session_id) != page_session_id
+    ):
+        session_page_ids[session_id] = page_session_id
+        session_call_counts[session_id] = 0
     calls = session_call_counts.get(session_id, 0)
     if calls >= settings.ai_session_call_limit:
         raise HTTPException(429, "AI session call limit reached")
@@ -70,8 +81,16 @@ async def analyze(
     response: Response,
     data: Annotated[str, Body(...)],
     session_id: Annotated[str | None, Cookie()] = None,
+    page_session_id: Annotated[
+        str | None,
+        Header(
+            alias="X-ScamCheck-Page-Session",
+            min_length=1,
+            max_length=80,
+        ),
+    ] = None,
 ) -> Analysis:
-    session_id = consume_ai_call(response, session_id)
+    session_id = consume_ai_call(response, session_id, page_session_id)
     deterministic_result = await check_message(data)
 
     try:

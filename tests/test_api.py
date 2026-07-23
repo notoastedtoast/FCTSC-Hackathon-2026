@@ -23,6 +23,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self._original_overrides = main.app.dependency_overrides.copy()
         main.database = self.database
         main.session_call_counts.clear()
+        main.session_page_ids.clear()
 
         async def get_mock_client():
             return self.gemini
@@ -40,6 +41,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         main.app.dependency_overrides.clear()
         main.app.dependency_overrides.update(self._original_overrides)
         main.session_call_counts.clear()
+        main.session_page_ids.clear()
 
     async def test_analyze_returns_and_saves_gemini_result(self) -> None:
         analysis = DetectiveAnalysis(
@@ -193,6 +195,47 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(second.status_code, 429)
         self.assertEqual(second.json(), {"detail": "AI session call limit reached"})
         self.assertEqual(len(self.mock_gemini.requests), 1)
+
+    async def test_reload_page_session_resets_call_limit(self) -> None:
+        analysis = DetectiveAnalysis(
+            risk_level=0.1,
+            reasoning="Safe.",
+            suggestions=[],
+            excerpts={},
+        )
+        self.mock_gemini.add_analysis(analysis)
+        self.mock_gemini.add_analysis(analysis)
+
+        with patch.object(main.settings, "ai_session_call_limit", 1):
+            first = await self.client.post(
+                "/analyze/",
+                json="First page request",
+                headers={
+                    "cookie": "session_id=session-a",
+                    "X-ScamCheck-Page-Session": "page-session-before-reload",
+                },
+            )
+            exhausted = await self.client.post(
+                "/analyze/",
+                json="Same page request",
+                headers={
+                    "cookie": "session_id=session-a",
+                    "X-ScamCheck-Page-Session": "page-session-before-reload",
+                },
+            )
+            after_reload = await self.client.post(
+                "/analyze/",
+                json="Request after reload",
+                headers={
+                    "cookie": "session_id=session-a",
+                    "X-ScamCheck-Page-Session": "page-session-after-reload",
+                },
+            )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(exhausted.status_code, 429)
+        self.assertEqual(after_reload.status_code, 200)
+        self.assertEqual(len(self.mock_gemini.requests), 2)
 
     async def test_delete_history_item_for_session(self) -> None:
         self.database.delete_history.return_value = True
