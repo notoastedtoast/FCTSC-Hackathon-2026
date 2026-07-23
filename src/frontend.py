@@ -90,6 +90,11 @@ async def frontend_app_render() -> FileResponse:
     return frontend_file("app-render.js")
 
 
+@router.get("/html2canvas.min.js", include_in_schema=False)
+async def frontend_html2canvas() -> FileResponse:
+    return frontend_file("html2canvas.min.js")
+
+
 @router.get("/service-worker.js", include_in_schema=False)
 async def frontend_service_worker() -> FileResponse:
     return FileResponse(

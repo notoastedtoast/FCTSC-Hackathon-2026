@@ -186,9 +186,9 @@ function resumeResultAutoFollow(){
   autoFollowResult=true;
   updateResultScrollButton();
   const visibleMessages=[...resultFrame.querySelectorAll(
-    '.detective-message-row,.psychology-message-row,.responder-message-row'
+    '.detective-message-row,.psychology-message-row,.responder-message-row,.post-analysis-question:not([hidden])'
   )].filter(message=>message.offsetParent!==null);
-  latestResultMessage=latestResultMessage||visibleMessages.at(-1)||null;
+  latestResultMessage=visibleMessages.at(-1)||latestResultMessage;
   scrollToResultMessage(latestResultMessage,{force:true});
 }
 
@@ -213,104 +213,37 @@ function clearMessageRevealTimers(){
   messageRevealTimers=[];
 }
 
-function streamMessageContent(message,onComplete){
-  const walker=document.createTreeWalker(message,NodeFilter.SHOW_TEXT);
-  const textNodes=[];
-  let node=walker.nextNode();
-  while(node){
-    const parent=node.parentElement;
-    if(
-      node.nodeValue?.trim()
-      &&!parent?.closest('[aria-hidden="true"]')
-      &&!parent?.closest('.original-message')
-    ){
-      textNodes.push({node,text:node.nodeValue});
-    }
-    node=walker.nextNode();
-  }
-
-  const units=[];
-  textNodes.forEach(entry=>{
-    entry.node.nodeValue='';
-    const chunks=entry.text.match(/\S+\s*|\s+/g)||[entry.text];
-    chunks.forEach(text=>units.push({node:entry.node,text}));
-  });
-  if(units.length===0){
-    onComplete();
-    return;
-  }
-
-  const unitsPerTick=Math.max(1,Math.ceil(units.length/MESSAGE_STREAM_MAX_STEPS));
-  let cursor=0;
-  let tickCount=0;
-  message.classList.add('message-streaming');
-  message.setAttribute('aria-busy','true');
-
-  const revealNextChunk=()=>{
-    const stop=Math.min(units.length,cursor+unitsPerTick);
-    while(cursor<stop){
-      const unit=units[cursor];
-      unit.node.nodeValue+=unit.text;
-      cursor+=1;
-    }
-    tickCount+=1;
-    if(tickCount%4===0||cursor>=units.length)revealResultMessage(message);
-    if(cursor>=units.length){
-      message.classList.remove('message-streaming');
-      message.setAttribute('aria-busy','false');
-      onComplete();
-      return;
-    }
-    const timer=window.setTimeout(revealNextChunk,MESSAGE_STREAM_CHUNK_MS);
-    messageRevealTimers.push(timer);
-  };
-
-  revealNextChunk();
-}
-
 function revealRowsSequentially(rows,{onComplete=null}={}){
   const messages=[...rows];
-  const reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   messages.forEach(message=>{
-    message.hidden=!reduceMotion;
-    message.classList.remove('message-revealing');
+    message.hidden=true;
+    message.removeAttribute('aria-busy');
   });
-  if(reduceMotion){
-    revealResultMessage(messages.at(-1)||null);
-    if(onComplete)onComplete();
-    return;
-  }
   if(messages.length===0){
     if(onComplete)onComplete();
     return;
   }
 
   let index=0;
-  const revealNextMessage=()=>{
+  const revealNext=()=>{
+    const message=messages[index];
+    message.hidden=false;
+    revealResultMessage(message);
+    index+=1;
     if(index>=messages.length){
       if(onComplete)onComplete();
       return;
     }
-    const message=messages[index];
-    message.hidden=false;
-    void message.offsetWidth;
-    message.classList.add('message-revealing');
-    revealResultMessage(message);
-    streamMessageContent(message,()=>{
-      index+=1;
-      if(index>=messages.length){
-        if(onComplete)onComplete();
-        return;
-      }
-      const timer=window.setTimeout(revealNextMessage,MESSAGE_STREAM_GAP_MS);
-      messageRevealTimers.push(timer);
-    });
+    const timer=window.setTimeout(revealNext,MESSAGE_REVEAL_INTERVAL_MS);
+    messageRevealTimers.push(timer);
   };
-  revealNextMessage();
+  revealNext();
 }
 
 function showComposerFrame(){
   clearMessageRevealTimers();
+  downloadResultImageButton.disabled=true;
+  resultImageStatus.textContent='';
   processingFrame.hidden=true;
   resultFrame.classList.remove('active');
   latestResultMessage=null;
@@ -322,6 +255,9 @@ function showComposerFrame(){
 
 function showProcessingFrame(){
   clearMessageRevealTimers();
+  currentShareSummary=null;
+  downloadResultImageButton.disabled=true;
+  resultImageStatus.textContent='';
   inputFrame.style.display='none';
   resultFrame.classList.remove('active');
   resultScrollButton.hidden=true;
@@ -363,7 +299,7 @@ function frontendRiskLevel(level){
   return {low:'safe',medium:'suspicious',high:'dangerous'}[level]||'suspicious';
 }
 
-function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=false}={}){
+function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=false,guidePending=false}={}){
   const analysis=result?.analysis||{};
   const evidence=analysis.excerpts&&typeof analysis.excerpts==='object'
     ?Object.entries(analysis.excerpts).slice(0,4).map(([excerpt,reason])=>({
@@ -398,7 +334,8 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
     }:null,
     character_notice:guideUnavailable
       ?'Cô tâm lý chưa thể tải hướng dẫn bổ sung lúc này.'
-      :null
+      :null,
+    character_pending:guidePending
   };
 }
 
@@ -666,6 +603,10 @@ function apiErrorMessage(statusCode,detail){
 
 async function requestJson(path,options={}){
   const requestOptions={credentials:'same-origin',...options};
+  const onAnalysisResult=typeof requestOptions.onAnalysisResult==='function'
+    ?requestOptions.onAnalysisResult
+    :null;
+  delete requestOptions.onAnalysisResult;
   let requestPath=path;
   let submittedText=null;
   if(path==='/analyze'){
@@ -697,6 +638,12 @@ async function requestJson(path,options={}){
     throw requestError;
   }
   if(requestPath==='/analyze/'&&submittedText!==null){
+    if(onAnalysisResult){
+      onAnalysisResult(backendAnalysisToPayload(
+        payload,
+        {guidePending:['medium','high'].includes(payload?.risk_level)}
+      ));
+    }
     return prepareOnlineResult(submittedText,payload);
   }
   return payload;
@@ -842,6 +789,26 @@ postAnalysisOptions.forEach(option=>option.addEventListener('click',async()=>{
     renderResponderGuidance(output.steps);
   }catch(error){showFeedback('Chưa thể tải các bước ứng cứu. Bác hãy thử lại sau.');}
 }));
+downloadResultImageButton.addEventListener('click',async()=>{
+  downloadResultImageButton.disabled=true;
+  resultImageStatus.textContent='Đang tạo ảnh PNG…';
+  try{
+    const outcome=await saveCurrentResultImage();
+    if(outcome==='shared'){
+      resultImageStatus.textContent='Đã mở bảng chia sẻ. Trên iPhone, chọn “Lưu hình ảnh” để đưa ảnh vào thư viện Ảnh.';
+    }else if(outcome==='preview'){
+      resultImageStatus.textContent='Ảnh đã được mở. Trên iPhone, chạm và giữ ảnh rồi chọn “Lưu vào Ảnh”.';
+    }else if(outcome==='cancelled'){
+      resultImageStatus.textContent='Đã đóng bảng chia sẻ; ảnh chưa được lưu.';
+    }else{
+      resultImageStatus.textContent='Đã tải ảnh PNG về thiết bị.';
+    }
+  }catch(error){
+    resultImageStatus.textContent='Chưa thể tạo ảnh lúc này. Bác vui lòng thử lại.';
+  }finally{
+    downloadResultImageButton.disabled=false;
+  }
+});
 historyDeleteButton.addEventListener('click',openDeleteConfirmation);
 deleteCancelButton.addEventListener('click',closeDeleteConfirmation);
 deleteConfirmButton.addEventListener('click',confirmDeleteSelectedHistory);
@@ -928,6 +895,7 @@ async function runAnalysis(submittedText){
 
   try{
     let payload;
+    let resultShown=false;
     if(isOffline){
       payload=ScamCheckOffline.analyze(submittedText);
       saveOfflineHistory(submittedText,payload);
@@ -939,6 +907,11 @@ async function runAnalysis(submittedText){
           headers:{
             'Content-Type':'application/json',
             'X-ScamCheck-Request-ID':pending.requestId
+          },
+          onAnalysisResult:initialPayload=>{
+            resultShown=true;
+            connectivityStatus.hidden=true;
+            showResultFrame(submittedText,initialPayload);
           },
           body:JSON.stringify({text:submittedText,source:'web'})
         });
@@ -963,7 +936,8 @@ async function runAnalysis(submittedText){
       }
     }
     connectivityStatus.hidden=true;
-    showResultFrame(submittedText,payload);
+    if(resultShown)completeResultFrame(submittedText,payload);
+    else showResultFrame(submittedText,payload);
   }catch(error){
     hideProcessingFrame();
     inputFrame.style.display='block';
