@@ -1,6 +1,8 @@
 from typing import Annotated
 from uuid import UUID, uuid4
 from contextlib import asynccontextmanager
+import hashlib
+import hmac
 import logging
 import json
 import re
@@ -36,7 +38,7 @@ load_dotenv(override=True)
 settings = Settings.from_environment()
 database = HistoryDatabase(":memory:")
 client = GeminiWrapper.from_settings(settings)
-session_call_counts: dict[str, int] = {}
+CALL_COUNT_COOKIE = "ai_call_count"
 
 
 async def ensure_database_ready() -> None:
@@ -53,14 +55,38 @@ def get_client() -> GeminiWrapper:
 ClientDep = Annotated[GeminiWrapper, Depends(get_client)]
 
 
-def consume_ai_call(response: Response, session_id: str | None) -> str:
+def _call_count(session_id: str, cookie: str | None) -> int:
+    if cookie is None:
+        return 0
+    try:
+        count, signature = cookie.split(".", 1)
+        value = int(count)
+    except ValueError:
+        return 0
+    expected = hmac.new(
+        settings.session_cookie_secret.encode(),
+        f"{session_id}:{value}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return value if value >= 0 and hmac.compare_digest(signature, expected) else 0
+
+
+def consume_ai_call(response: Response, session_id: str | None, cookie: str | None) -> str:
     if session_id is None:
         session_id = str(uuid4())
         response.set_cookie("session_id", session_id, httponly=True, samesite="lax")
-    calls = session_call_counts.get(session_id, 0)
+    calls = _call_count(session_id, cookie)
     if calls >= settings.ai_session_call_limit:
         raise HTTPException(429, "AI session call limit reached")
-    session_call_counts[session_id] = calls + 1
+    calls += 1
+    signature = hmac.new(
+        settings.session_cookie_secret.encode(),
+        f"{session_id}:{calls}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    response.set_cookie(
+        CALL_COUNT_COOKIE, f"{calls}.{signature}", httponly=True, samesite="lax"
+    )
     return session_id
 
 
@@ -84,11 +110,12 @@ async def analyze(
     response: Response,
     data: Annotated[str, Body(...)],
     session_id: Annotated[str | None, Cookie()] = None,
+    ai_call_count: Annotated[str | None, Cookie(alias=CALL_COUNT_COOKIE)] = None,
 ) -> Analysis:
     # Deployment fix: make sure the lightweight DB is ready even if lifespan
     # startup did not open it before the first request.
     await ensure_database_ready()
-    session_id = consume_ai_call(response, session_id)
+    session_id = consume_ai_call(response, session_id, ai_call_count)
     deterministic_result = await check_message(data)
 
     try:
@@ -166,6 +193,7 @@ async def responder(client: ClientDep, data: ResponderRequest) -> ResponderOutpu
         numbers = {re.sub(r"\D", "", value) for value in re.findall(r"\d(?:[\s.-]?\d){2,}", " ".join(output.steps))}
         if not numbers <= set(TELEPHONES.values()):
             raise ValueError("Responder output included an unknown phone number")
+        await database.save_responder_output(str(data.history_id), output.model_dump_json())
         return output
     except Exception as e:
         logger.exception("Gemini responder generation failed with exception %s", e)

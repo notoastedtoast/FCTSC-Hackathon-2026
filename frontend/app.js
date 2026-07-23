@@ -107,6 +107,13 @@ mobileLayoutQuery.addEventListener('change',syncQuickInputLayout);
 // Hash routing keeps the app single-page while still allowing direct links.
 function routeFromHash(){
   const candidate=window.location.hash.slice(1);
+  if(candidate.startsWith('result/')){
+    try{
+      return {view:'result',resultId:decodeURIComponent(candidate.slice(7))};
+    }catch(error){
+      return {view:'analyze',resultId:null};
+    }
+  }
   if(candidate==='library')return {view:'library',detailId:null};
   if(candidate.startsWith('library/')){
     try{
@@ -116,6 +123,16 @@ function routeFromHash(){
     }
   }
   return {view:Object.hasOwn(viewTitles,candidate)?candidate:'analyze',detailId:null};
+}
+
+let resultFromHistoryId=null;
+
+function openResultPage(id,{fromHistory=false}={}){
+  if(!id)return;
+  resultFromHistoryId=fromHistory?String(id):null;
+  const hash=`#result/${encodeURIComponent(id)}`;
+  if(window.location.hash===hash)syncRoute({focus:true});
+  else window.location.hash=hash;
 }
 
 // Swap visible panels and trigger any page-specific refresh work.
@@ -208,40 +225,16 @@ function handleResultWindowScroll(){
   lastResultScrollY=currentScrollY;
 }
 
-function clearMessageRevealTimers(){
-  messageRevealTimers.forEach(timer=>window.clearTimeout(timer));
-  messageRevealTimers=[];
-}
-
-function revealRowsSequentially(rows,{onComplete=null}={}){
+function revealRows(rows){
   const messages=[...rows];
   messages.forEach(message=>{
-    message.hidden=true;
+    message.hidden=false;
     message.removeAttribute('aria-busy');
   });
-  if(messages.length===0){
-    if(onComplete)onComplete();
-    return;
-  }
-
-  let index=0;
-  const revealNext=()=>{
-    const message=messages[index];
-    message.hidden=false;
-    revealResultMessage(message);
-    index+=1;
-    if(index>=messages.length){
-      if(onComplete)onComplete();
-      return;
-    }
-    const timer=window.setTimeout(revealNext,MESSAGE_REVEAL_INTERVAL_MS);
-    messageRevealTimers.push(timer);
-  };
-  revealNext();
+  revealResultMessage(messages.at(-1));
 }
 
 function showComposerFrame(){
-  clearMessageRevealTimers();
   downloadResultImageButton.disabled=true;
   resultImageStatus.textContent='';
   processingFrame.hidden=true;
@@ -254,7 +247,6 @@ function showComposerFrame(){
 }
 
 function showProcessingFrame(){
-  clearMessageRevealTimers();
   currentShareSummary=null;
   downloadResultImageButton.disabled=true;
   resultImageStatus.textContent='';
@@ -353,6 +345,7 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
 function backendHistoryToItem(entry){
   const result=backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.guide_output});
   result.id=String(entry?.id||'');
+  result.responder_output=entry?.responder_output||null;
   return {
     id:String(entry?.id||''),
     message:String(entry?.message||''),
@@ -419,9 +412,7 @@ async function loadHistory(){
 
 async function showSavedHistoryResult(item){
   if(!item?.result)return;
-  window.location.hash='analyze';
-  switchView('analyze');
-  showResultFrame(item.message,item.result,{fromHistory:true});
+  openResultPage(item.id,{fromHistory:true});
 }
 
 function updateHistorySelectionUi(){
@@ -929,10 +920,9 @@ async function runAnalysis(submittedText){
 
   try{
     let payload;
-    let resultShown=false;
     if(isOffline){
       payload=ScamCheckOffline.analyze(submittedText);
-      saveOfflineHistory(submittedText,payload);
+      payload.id=saveOfflineHistory(submittedText,payload).id;
     }else{
       try{
         const pending=pendingAnalysisFor(submittedText);
@@ -941,11 +931,6 @@ async function runAnalysis(submittedText){
           headers:{
             'Content-Type':'application/json',
             'X-ScamCheck-Request-ID':pending.requestId
-          },
-          onAnalysisResult:initialPayload=>{
-            resultShown=true;
-            connectivityStatus.hidden=true;
-            showResultFrame(submittedText,initialPayload);
           },
           body:JSON.stringify({text:submittedText,source:'web'})
         });
@@ -970,8 +955,7 @@ async function runAnalysis(submittedText){
       }
     }
     connectivityStatus.hidden=true;
-    if(resultShown)completeResultFrame(submittedText,payload);
-    else showResultFrame(submittedText,payload);
+    openResultPage(payload.id);
   }catch(error){
     hideProcessingFrame();
     inputFrame.style.display='block';
@@ -1156,10 +1140,30 @@ function syncLibraryRoute(){
   else showLibraryList();
 }
 
+async function showResultRoute(resultId){
+  try{
+    const offlineEntry=resultId.startsWith('offline-')
+      ?readOfflineHistory().find(item=>item.id===resultId)
+      :null;
+    const item=offlineEntry||backendHistoryToItem(await requestJson(
+      `/history/${encodeURIComponent(resultId)}`
+    ));
+    if(!item?.result)throw new Error('Saved result not found');
+    const route=routeFromHash();
+    if(route.view!=='result'||route.resultId!==resultId)return;
+    showResultFrame(item.message,item.result,{fromHistory:resultFromHistoryId===resultId});
+    resultFromHistoryId=null;
+  }catch(error){
+    if(routeFromHash().view==='result')window.location.hash='history';
+  }
+}
+
 function syncRoute({focus=false}={}){
   const route=routeFromHash();
+  if(route.view==='analyze'&&resultFrame.classList.contains('active'))showComposerFrame();
   switchView(route.view,{focus});
   if(route.view==='library')syncLibraryRoute();
+  if(route.view==='result'&&route.resultId)void showResultRoute(route.resultId);
 }
 
 checkButton.addEventListener('click',async()=>{

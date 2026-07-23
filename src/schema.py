@@ -2,6 +2,7 @@ from pydantic import BaseModel, computed_field, Field
 
 from dataclasses import dataclass
 import os
+import secrets
 from typing import Literal
 from uuid import UUID
 
@@ -181,6 +182,7 @@ class Settings:
     api_keys: list[str]
     model: str
     ai_session_call_limit: int
+    session_cookie_secret: str = ""
 
     @classmethod
     def from_environment(cls):
@@ -201,4 +203,5 @@ class Settings:
                     str(DEFAULT_AI_SESSION_CALL_LIMIT),
                 )
             ),
+            os.getenv("AI_SESSION_COOKIE_SECRET") or secrets.token_urlsafe(32),
         )

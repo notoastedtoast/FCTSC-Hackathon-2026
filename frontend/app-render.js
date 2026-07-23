@@ -840,29 +840,18 @@ function revealPostAnalysisQuestion(){
 }
 
 function revealPsychologyMessages(){
-  if(!detectiveSequenceComplete||!psychologyReady)return;
-  psychologyReady=false;
+  if(!psychologyMessage.childElementCount)return;
   actionSection.hidden=false;
   psychologyBlock.hidden=false;
-  revealRowsSequentially(
-    psychologyMessage.querySelectorAll('.psychology-message-row'),
-    {onComplete:revealPostAnalysisQuestion}
-  );
+  revealRows(psychologyMessage.querySelectorAll('.psychology-message-row'));
+  revealPostAnalysisQuestion();
 }
 
-function playMessageSequence(){
-  clearMessageRevealTimers();
-  detectiveSequenceComplete=false;
-  psychologyReady=psychologyMessage.childElementCount>0;
-  revealRowsSequentially(
-    signalList.querySelectorAll('.detective-message-row'),
-    {onComplete:()=>{
-      detectiveSequenceComplete=true;
-      downloadResultImageButton.disabled=false;
-      resultImageStatus.textContent='';
-      revealPsychologyMessages();
-    }}
-  );
+function renderResultBlocks(){
+  revealRows(signalList.querySelectorAll('.detective-message-row'));
+  downloadResultImageButton.disabled=false;
+  resultImageStatus.textContent='';
+  revealPsychologyMessages();
 }
 
 const deterministicRuleLabels={
@@ -1066,14 +1055,7 @@ function renderResponderGuidance(steps){
   });
   responderSteps.replaceChildren(...items);
   responderBlock.hidden=false;
-  revealRowsSequentially(items);
-}
-
-function completeResultFrame(text,payload){
-  renderPsychology(payload);
-  currentShareSummary=resultShareSummary(text,payload);
-  psychologyReady=psychologyMessage.childElementCount>0;
-  revealPsychologyMessages();
+  revealRows(items);
 }
 
 function showResultFrame(text,payload,{fromHistory=false}={}){
@@ -1094,6 +1076,9 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
 
   renderSignals(detective,payload.deterministic_findings,text);
   renderPsychology(payload);
+  if(Array.isArray(payload.responder_output?.steps)&&!payload.responder_output.needs_bank){
+    renderResponderGuidance(payload.responder_output.steps);
+  }
   currentShareSummary=resultShareSummary(text,payload);
   void Promise.all([loadShareLogo(),loadShareDetectiveAvatar()]);
   downloadResultImageButton.disabled=true;
@@ -1104,5 +1089,5 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
   resultFrame.classList.add('active');
   resetResultAutoFollow();
   window.scrollTo({top:0,behavior:'smooth'});
-  playMessageSequence();
+  renderResultBlocks();
 }
