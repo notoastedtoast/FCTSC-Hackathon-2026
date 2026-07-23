@@ -10,7 +10,9 @@ from time import monotonic
 
 from .schema import CharacterConfig, Settings
 
-DELAY = 1
+DELAY = 0.1
+MAX_RETRIES = 2
+REQUEST_TIMEOUT = 20
 DELIMITER = "\n----------\n"
 logger = logging.getLogger(__name__)
 
@@ -56,13 +58,16 @@ class GeminiWrapper:
 
     @classmethod
     def from_settings(cls, settings: Settings):
-        return GeminiWrapper(settings.base_url, settings.api_keys, settings.model, 30)
+        return GeminiWrapper(
+            settings.base_url, settings.api_keys, settings.model, REQUEST_TIMEOUT
+        )
 
     async def _generate[T: BaseModel](
         self,
         config: CharacterConfig[T],
         prompt: str,
-        timeout: float
+        timeout: float,
+        api_key: str,
     ) -> httpx.Response:
         # Generate 
         data = {
@@ -86,7 +91,7 @@ class GeminiWrapper:
         response = await self.client.post(
             f"models/{self.model}:generateContent",
             timeout=timeout,
-            headers={"x-goog-api-key": self.api_keys[self.key_index]},
+            headers={"x-goog-api-key": api_key},
             json=data,
         )
 
@@ -105,35 +110,36 @@ class GeminiWrapper:
         if not self.api_keys:
             raise ValueError("At least one Gemini API key is required")
 
-        time_taken = 0.0
-        for attempt in range(len(self.api_keys)):
+        for attempt in range(MAX_RETRIES + 1):
             key_index = self.key_index
-
-            resp = await self._generate(config, prompt, self.timeout - time_taken)
-
-            self.key_index = (key_index + 1) % len(self.api_keys)
-            time_taken += resp.elapsed.total_seconds()
-
-            if resp.status_code == 200:
-                payload: dict = resp.json()
-                text = payload["candidates"][0]["content"]["parts"][0]["text"]
-                model = config.schema.model_validate_json(text)
-                self.cache.set(cache_key, model)
-                return model
-            if resp.status_code == 429:
-                logger.warning(
-                    "Gemini API rate limit reached for API key index %d",
-                    key_index,
+            try:
+                resp = await self._generate(
+                    config, prompt, self.timeout, self.api_keys[key_index]
                 )
-            elif resp.status_code == 503:
-                logger.warning("Gemini API unavailable; trying the next API key")
+            except (httpx.TimeoutException, httpx.TransportError):
+                logger.warning("Gemini request failed; retrying with the next API key")
+                if attempt == MAX_RETRIES:
+                    raise
             else:
-                resp.raise_for_status()
+                if resp.status_code == 200:
+                    payload: dict = resp.json()
+                    text = payload["candidates"][0]["content"]["parts"][0]["text"]
+                    model = config.schema.model_validate_json(text)
+                    self.cache.set(cache_key, model)
+                    return model
+                if resp.status_code not in (429, 503):
+                    resp.raise_for_status()
+                if resp.status_code == 429:
+                    logger.warning("Gemini API rate limit reached for API key index %d", key_index)
+                else:
+                    logger.warning("Gemini API unavailable; trying the next API key")
+                if attempt == MAX_RETRIES:
+                    resp.raise_for_status()
+            finally:
+                self.key_index = (key_index + 1) % len(self.api_keys)
 
             delay = DELAY * (2 ** attempt)
             await asyncio.sleep(delay)
-            if attempt == len(self.api_keys) - 1:
-                resp.raise_for_status()
 
         raise AssertionError("Unreachable")
 

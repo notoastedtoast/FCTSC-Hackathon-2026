@@ -2,6 +2,8 @@ from typing import Annotated
 from uuid import UUID, uuid4
 from contextlib import asynccontextmanager
 import logging
+import json
+import re
 
 from fastapi import Body, Cookie, Depends, FastAPI, HTTPException, Response
 from dotenv import load_dotenv
@@ -14,9 +16,13 @@ from .frontend import router as frontend_router
 from .schema import (
     DETECTIVE,
     GUIDE,
+    RESPONDER,
     Analysis,
     GuideOutput,
+    ResponderOutput,
+    ResponderRequest,
     Settings,
+    TELEPHONES,
 )
 from .wrapper import GeminiWrapper
 
@@ -98,7 +104,7 @@ async def analyze(
         deterministic_findings=deterministic_result.findings,
         deterministic_risk_floor=deterministic_result.risk_floor,
     )
-    await database.save_analysis(session_id, data, result)
+    result.id = UUID(await database.save_analysis(session_id, data, result))
     return result
 
 
@@ -136,6 +142,33 @@ async def guide(
 
     await database.save_guide_output(str(history_id), output.data)
     return output
+
+
+@app.post("/responder/", response_model=ResponderOutput)
+async def responder(client: ClientDep, data: ResponderRequest) -> ResponderOutput:
+    await ensure_database_ready()
+    item = await database.get_history_item(str(data.history_id))
+
+    if item is None:
+        raise HTTPException(404, "History item not found")
+
+    stored = Analysis.model_validate(item["analysis"])
+
+    if stored.analysis is None or stored.risk_level == "low":
+        raise HTTPException(409, "A non-low-risk analysis is required")
+
+    hotlines = {name: number for name, number in data.hotlines.items() if TELEPHONES.get(name) == number}
+    context = json.dumps({"choice": data.choice, "analysis": stored.analysis.model_dump(), "hotlines": hotlines}, ensure_ascii=False)
+
+    try:
+        output = await client.generate(RESPONDER, context)
+        numbers = {re.sub(r"\D", "", value) for value in re.findall(r"\d(?:[\s.-]?\d){2,}", " ".join(output.steps))}
+        if not numbers <= set(TELEPHONES.values()):
+            raise ValueError("Responder output included an unknown phone number")
+        return output
+    except Exception as e:
+        logger.exception("Gemini responder generation failed with exception %s", e)
+        raise HTTPException(502, "AI responder generation failed") from e
 
 
 @app.get("/history/")

@@ -374,6 +374,7 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
   const riskLevel=frontendRiskLevel(result?.risk_level);
 
   return {
+    id:String(result?.id||''),
     offline:false,
     detective:{
       title:'Thám tử',
@@ -402,11 +403,13 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
 }
 
 function backendHistoryToItem(entry){
+  const result=backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.guide_output});
+  result.id=String(entry?.id||'');
   return {
     id:String(entry?.id||''),
     message:String(entry?.message||''),
     date:String(entry?.created_at||''),
-    result:backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.guide_output}),
+    result,
     offline:false
   };
 }
@@ -825,17 +828,19 @@ function submitPracticeAnswer(answer,selectedButton){
 messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
-postAnalysisOptions.forEach(option=>option.addEventListener('click',()=>{
+postAnalysisOptions.forEach(option=>option.addEventListener('click',async()=>{
   if(option.disabled)return;
   postAnalysisOptions.forEach(item=>{
     item.disabled=true;
     item.classList.toggle('selected',item===option);
     item.setAttribute('aria-pressed',String(item===option));
   });
-  renderResponderGuidance(
-    option.dataset.postAnalysisChoice,
-    postAnalysisQuestion.dataset.riskLevel
-  );
+  try{
+    const text=postAnalysisQuestion.dataset.message.toLocaleLowerCase('vi-VN').replaceAll(' ','');
+    const hotlines=Object.fromEntries(Object.entries(await loadTelephones()).filter(([name])=>text.includes(name.toLocaleLowerCase('vi-VN').replaceAll(' ',''))));
+    const output=await requestJson('/responder/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history_id:postAnalysisQuestion.dataset.analysisId,choice:option.dataset.postAnalysisChoice,hotlines})});
+    renderResponderGuidance(output.steps);
+  }catch(error){showFeedback('Chưa thể tải các bước ứng cứu. Bác hãy thử lại sau.');}
 }));
 historyDeleteButton.addEventListener('click',openDeleteConfirmation);
 deleteCancelButton.addEventListener('click',closeDeleteConfirmation);
@@ -1089,11 +1094,22 @@ async function loadScamTypes({force=false}={}){
 }
 
 function showLibraryList(){
+  void loadTelephones();
   libraryDetailFrame.hidden=true;
   libraryListFrame.hidden=false;
   void loadScamTypes().then(()=>{
     requestAnimationFrame(()=>window.scrollTo({top:libraryScrollPosition,behavior:'auto'}));
   });
+}
+
+async function loadTelephones(){
+  const grid=byId('hotline-grid');
+  if(telephoneCatalog)return telephoneCatalog;
+  grid.replaceChildren();
+  try{telephoneCatalog=await requestJson('/telephones');grid.replaceChildren(...Object.entries(telephoneCatalog).map(([name,number])=>{
+    const card=document.createElement('article'),title=document.createElement('h3'),link=document.createElement('a');
+    card.className='hotline-card';title.textContent=name;link.href=`tel:${number}`;link.textContent=number;link.setAttribute('aria-label',`Gọi tổng đài ${name}: ${number}`);card.append(title,link);return card;
+  }));return telephoneCatalog;}catch(error){grid.textContent='Chưa tải được danh sách tổng đài.';return {};}
 }
 
 async function showLibraryDetail(detailId){

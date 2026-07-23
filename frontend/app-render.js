@@ -133,9 +133,12 @@ function revealPostAnalysisQuestion(){
 }
 
 function revealPsychologyMessages(){
-  if(psychologyMessage.childElementCount===0)return;
   actionSection.hidden=false;
   psychologyBlock.hidden=false;
+  if(psychologyMessage.childElementCount===0){
+    revealPostAnalysisQuestion();
+    return;
+  }
   revealRowsSequentially(
     psychologyMessage.querySelectorAll('.psychology-message-row'),
     {onComplete:revealPostAnalysisQuestion}
@@ -302,7 +305,8 @@ function renderPsychology(payload){
   const shouldShow=riskLevel==='suspicious'||riskLevel==='dangerous';
   psychologyMessage.replaceChildren();
   postAnalysisQuestion.hidden=true;
-  postAnalysisQuestion.dataset.eligible=String(shouldShow);
+  postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id));
+  postAnalysisQuestion.dataset.analysisId=String(payload.id||'');
   postAnalysisQuestion.dataset.riskLevel=riskLevel||'suspicious';
   responderBlock.hidden=true;
   responderSteps.replaceChildren();
@@ -327,9 +331,7 @@ function renderPsychology(payload){
   splitPsychologyMessage(message).forEach(appendPsychologyMessage);
 }
 
-function renderResponderGuidance(choice,riskLevel){
-  const normalizedRisk=riskLevel==='dangerous'?'dangerous':'suspicious';
-  const steps=rescuePlans[choice]?.[normalizedRisk]||rescuePlans.none[normalizedRisk];
+function renderResponderGuidance(steps){
   const items=steps.map(step=>{
     const row=document.createElement('li');
     row.className='responder-message-row';
@@ -358,6 +360,7 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
   const risk=riskPresentations[detective.risk_level]||riskPresentations.suspicious;
 
   resultContextLabel.textContent=fromHistory?'Kết quả đã lưu':'Phân tích hoàn tất';
+  postAnalysisQuestion.dataset.message=text;
   historyReturnButton.hidden=!fromHistory;
 
   riskCard.className=`risk-card ${risk.className}`;

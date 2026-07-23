@@ -1,11 +1,12 @@
 from unittest import IsolatedAsyncioTestCase
+from uuid import UUID
 from unittest.mock import AsyncMock, patch
 
 import httpx
 
 from src import main
 from src.database import HistoryDatabase
-from src.schema import Analysis, DetectiveAnalysis, GuideOutput
+from src.schema import Analysis, DetectiveAnalysis, GuideOutput, ResponderOutput
 
 from .mock_gemini import MockGeminiAPI
 
@@ -51,6 +52,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.mock_gemini.add_analysis(analysis)
         result = Analysis(
             success=True,
+            id=UUID(self.history_id),
             analysis=analysis,
         )
 
@@ -59,7 +61,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json(),
-            result.model_dump(),
+            result.model_dump(mode="json"),
         )
         self.assertIsNotNone(response.cookies.get("session_id"))
         self.database.save_analysis.assert_awaited_once()
@@ -81,7 +83,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(
             response.json(),
-            {"success": False, "analysis": None, "deterministic_findings": [],
+            {"success": False, "id": None, "analysis": None, "deterministic_findings": [],
              "deterministic_risk_floor": "low", "risk_level": None},
         )
         self.database.save_analysis.assert_not_awaited()
@@ -167,6 +169,34 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json(), {"detail": "History item not found"})
+
+    async def test_responder_generates_after_a_selected_scenario(self) -> None:
+        analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})
+        output = ResponderOutput(steps=["Gọi 1900545413 ngay.", "Khóa tài khoản."])
+        self.mock_gemini.add_analysis(output)
+        self.database.get_history_item.return_value = {"analysis": Analysis(success=True, analysis=analysis).model_dump()}
+
+        response = await self.client.post("/responder/", json={"history_id": self.history_id, "choice": "sent-money", "hotlines": {"Vietcombank": "1900545413", "Fake": "999"}})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), output.model_dump())
+        self.assertIn("1900545413", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertNotIn("19009247", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertNotIn("999", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+
+    async def test_telephones_are_public(self) -> None:
+        response = await self.client.get("/telephones")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["Vietcombank"], "1900545413")
+
+    async def test_responder_rejects_unknown_output_phone(self) -> None:
+        analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})
+        self.mock_gemini.add_analysis(ResponderOutput(steps=["Gọi 999.", "Khóa tài khoản."]))
+        self.database.get_history_item.return_value = {"analysis": Analysis(success=True, analysis=analysis).model_dump()}
+
+        response = await self.client.post("/responder/", json={"history_id": self.history_id, "choice": "sent-money", "hotlines": {}})
+
+        self.assertEqual(response.status_code, 502)
 
     async def test_analyze_enforces_per_session_call_limit(self) -> None:
         analysis = DetectiveAnalysis(

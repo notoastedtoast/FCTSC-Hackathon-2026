@@ -13,7 +13,7 @@ const toolsColumn=query('.tools-column'),mobileQuickCards=queryAll('.sample-card
 let recognition=null,isRecording=false,selectedHistoryIds=new Set(),isAnalyzing=false,sessionAtLimit=false,remainingAnalyses=ANALYSIS_LIMIT,isOffline=!navigator.onLine,historyCache=[],messageRevealTimers=[];
 let autoFollowResult=true,latestResultMessage=null,lastResultScrollY=window.scrollY,resultScrollGuardUntil=0,resultTouchY=null;
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
-let scamTypes=[],scamTypesPromise=null,selectedScamGroup='all',libraryQuery='',libraryScrollPosition=0;
+let scamTypes=[],scamTypesPromise=null,telephoneCatalog=null,selectedScamGroup='all',libraryQuery='',libraryScrollPosition=0;
 const samples={bank:'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',delivery:'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',prize:'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.'};
 const practicePrompts=[
   {
