@@ -9,6 +9,15 @@ optionally generates a short Cô tâm lý response; and commits the result, audi
 and replayable history data to the configured database. Deterministic URL/text findings are advisory
 evidence only and never override the provider's risk level.
 
+For suspicious or dangerous results, the browser follows Cô tâm lý with a one-choice
+exposure check. The selected exposure and risk level choose an authored numbered action
+list from Người ứng cứu. The steps appear as one-second sequential avatar bubbles. This
+step runs only in the frontend and does not call AI or save the selection.
+
+All Detective, Cô tâm lý, and Người ứng cứu bubbles are progressively revealed at
+one-second intervals. Cô tâm lý emoji follow the meaning of each sentence, while the
+Detective's final three-action card is emphasized for quick scanning.
+
 When the browser is offline, a conservative rules engine runs locally. Offline results
 are stored only in a bounded browser `localStorage` history and are never silently
 uploaded. The service worker caches authored shell assets only, not API responses,
@@ -77,6 +86,7 @@ frontend/
   styles.css              Responsive UI styles
   detective-avatar.png    Detective analysis avatar
   psychologist-avatar.png Cô tâm lý response avatar
+  responder-avatar.png    Người ứng cứu action-bubble avatar
 src/
   main.py                 FastAPI composition, sessions, quota, routes, idempotency
   analyzer.py             Gemini/Groq fallback chain and structured validation

@@ -1,6 +1,6 @@
 
-const CACHE_NAME="scamcheck-shell-v17";
-const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app.js","/scamcheck-logo.png","/detective-avatar.png","/psychologist-avatar.png"];
+const CACHE_NAME="scamcheck-shell-v20";
+const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app.js","/scamcheck-logo.png","/detective-avatar.png","/psychologist-avatar.png","/responder-avatar.png"];
 const NETWORK_FIRST_PATHS=new Set(["/","/styles.css","/app.js"]);
 
 self.addEventListener("install",event=>{

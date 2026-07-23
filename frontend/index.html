@@ -159,7 +159,28 @@
               </div>
             </div>
             <div id="psychology-message" class="psychology-message-list"></div>
+            <section id="post-analysis-question" class="post-analysis-question" aria-labelledby="post-analysis-question-title" hidden>
+              <p class="post-analysis-kicker">Bước tiếp theo</p>
+              <h3 id="post-analysis-question-title">Bác đã làm gì với tin nhắn này rồi?</h3>
+              <p class="post-analysis-hint">Chọn việc gần nhất bác đã làm. Bác chỉ có thể chọn một lần.</p>
+              <div class="post-analysis-options" role="group" aria-labelledby="post-analysis-question-title">
+                <button class="post-analysis-option" type="button" data-post-analysis-choice="none" aria-pressed="false">Chưa làm gì</button>
+                <button class="post-analysis-option" type="button" data-post-analysis-choice="opened-link" aria-pressed="false">Đã bấm vào liên kết</button>
+                <button class="post-analysis-option" type="button" data-post-analysis-choice="shared-info" aria-pressed="false">Đã cung cấp thông tin</button>
+                <button class="post-analysis-option" type="button" data-post-analysis-choice="sent-money" aria-pressed="false">Đã chuyển tiền</button>
+              </div>
+            </section>
           </div>
+          <section id="responder-block" class="responder-block" aria-labelledby="responder-title" aria-live="polite" hidden>
+            <div class="responder-profile">
+              <img class="responder-avatar" src="./responder-avatar.png" alt="" width="54" height="54">
+              <div>
+                <div class="role-label responder-label">Người ứng cứu</div>
+                <h2 id="responder-title">Các bước cần làm ngay</h2>
+              </div>
+            </div>
+            <ol id="responder-steps" class="responder-steps"></ol>
+          </section>
         </section>
       </section>
 
