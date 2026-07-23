@@ -1,7 +1,8 @@
-
+/* Offline shell cache for the authored frontend assets only.
+   API requests and user data are intentionally never cached here. */
 const CACHE_NAME="scamcheck-shell-v20";
-const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app.js","/scamcheck-logo.png","/detective-avatar.png","/psychologist-avatar.png","/responder-avatar.png"];
-const NETWORK_FIRST_PATHS=new Set(["/","/styles.css","/app.js"]);
+const APP_SHELL=["/","/styles.css","/offline-analyzer.js","/app-data.js","/app-render.js","/app.js","/scamcheck-logo.png","/detective-avatar.png","/psychologist-avatar.png","/responder-avatar.png"];
+const NETWORK_FIRST_PATHS=new Set(["/","/styles.css","/app-data.js","/app-render.js","/app.js"]);
 
 self.addEventListener("install",event=>{
   event.waitUntil(
@@ -31,6 +32,7 @@ self.addEventListener("fetch",event=>{
   if(url.origin!==self.location.origin||!APP_SHELL.includes(url.pathname))return;
 
   const cacheKey=url.pathname;
+  // Refresh authored shell files in the background when possible.
   const updateCache=async()=>{
     const response=await fetch(request);
     if(!response.ok)return response;

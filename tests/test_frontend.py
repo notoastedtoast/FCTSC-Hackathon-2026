@@ -7,15 +7,26 @@ import subprocess
 import unittest
 
 
+def frontend_script_bundle(frontend: Path) -> str:
+    return "\n".join(
+        (frontend / name).read_text(encoding="utf-8")
+        for name in ("app-data.js", "app-render.js", "app.js")
+    )
+
+
 class FrontendTests(unittest.TestCase):
     def test_every_required_javascript_element_exists_in_the_page(self) -> None:
         root = Path(__file__).resolve().parent.parent
-        page = (root / "frontend" / "index.html").read_text(encoding="utf-8")
-        script = (root / "frontend" / "app.js").read_text(encoding="utf-8")
+        frontend = root / "frontend"
+        page = (frontend / "index.html").read_text(encoding="utf-8")
+        script = frontend_script_bundle(frontend)
 
         page_ids = set(re.findall(r'\bid=["\']([^"\']+)["\']', page))
         required_ids = set(
-            re.findall(r'document\.getElementById\(["\']([^"\']+)["\']\)', script)
+            re.findall(
+                r'(?:document\.getElementById|byId)\(["\']([^"\']+)["\']\)',
+                script,
+            )
         )
 
         self.assertEqual(required_ids - page_ids, set())
@@ -25,7 +36,7 @@ class FrontendTests(unittest.TestCase):
         frontend = root / "frontend"
         page = (frontend / "index.html").read_text(encoding="utf-8")
         styles = (frontend / "styles.css").read_text(encoding="utf-8")
-        script = (frontend / "app.js").read_text(encoding="utf-8")
+        script = frontend_script_bundle(frontend)
         offline_analyzer = (frontend / "offline-analyzer.js").read_text(
             encoding="utf-8"
         )
@@ -36,6 +47,8 @@ class FrontendTests(unittest.TestCase):
         self.assertTrue((frontend / "psychologist-avatar.png").is_file())
         self.assertTrue((frontend / "responder-avatar.png").is_file())
         self.assertIn('href="./styles.css"', page)
+        self.assertIn('src="./app-data.js"', page)
+        self.assertIn('src="./app-render.js"', page)
         self.assertIn('src="./app.js"', page)
         self.assertIn('src="./offline-analyzer.js"', page)
         self.assertNotIn("<style>", page)
@@ -99,7 +112,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('id="history-return-button"', page)
         self.assertIn("requestJson('/analyze'", script)
         self.assertIn("'X-ScamCheck-Request-ID'", script)
-        self.assertIn("requestJson('/session/ai-calls'", script)
+        self.assertIn("function loadUsageCompat()", script)
         self.assertIn("requestJson('/scam-types')", script)
         self.assertIn("requestJson(`/scam-types/${encodeURIComponent(detailId)}`)", script)
         self.assertIn("window.history.pushState({scamLibraryFromList:true}", script)
@@ -209,7 +222,10 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("saveOfflineHistory(submittedText,payload)", script)
         self.assertIn("requestJson('/history/')", script)
         self.assertIn("reviewButton.className=`history-review-button", script)
-        self.assertIn("result:entry?.response||null", script)
+        self.assertIn(
+            "result:backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.guide_output})",
+            script,
+        )
         self.assertIn("showSavedHistoryResult(item)", script)
         self.assertIn("{fromHistory:true}", script)
         self.assertIn("status.className=`history-status", script)
@@ -236,11 +252,16 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
         self.assertIn('"/offline-analyzer.js"', service_worker)
+        self.assertIn('"/app-data.js"', service_worker)
+        self.assertIn('"/app-render.js"', service_worker)
         self.assertIn('"/detective-avatar.png"', service_worker)
         self.assertIn('"/psychologist-avatar.png"', service_worker)
         self.assertIn('"/responder-avatar.png"', service_worker)
         self.assertIn('CACHE_NAME="scamcheck-shell-v20"', service_worker)
-        self.assertIn('new Set(["/","/styles.css","/app.js"])', service_worker)
+        self.assertIn(
+            'new Set(["/","/styles.css","/app-data.js","/app-render.js","/app.js"])',
+            service_worker,
+        )
         self.assertIn("if(!NETWORK_FIRST_PATHS.has(cacheKey))", service_worker)
         self.assertIn("fetch(request)", service_worker)
         self.assertIn("const cacheKey=url.pathname", service_worker)
@@ -332,7 +353,7 @@ class FrontendTests(unittest.TestCase):
 
     def test_practice_dataset_and_grading_live_only_in_frontend(self) -> None:
         root = Path(__file__).resolve().parent.parent
-        script = (root / "frontend" / "app.js").read_text(encoding="utf-8")
+        script = (root / "frontend" / "app-data.js").read_text(encoding="utf-8")
         match = re.search(r"const practicePrompts=(\[.*?\]);", script, re.DOTALL)
 
         self.assertIsNotNone(match)
