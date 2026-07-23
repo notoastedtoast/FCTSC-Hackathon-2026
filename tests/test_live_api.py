@@ -94,7 +94,6 @@ class LiveAnalyzeAPITests(IsolatedAsyncioTestCase):
         self._original_database = main.database
         self._original_overrides = main.app.dependency_overrides.copy()
         main.database = self.database
-        main.session_call_counts.clear()
 
         async def get_real_client():
             return main.client
@@ -109,7 +108,6 @@ class LiveAnalyzeAPITests(IsolatedAsyncioTestCase):
         await self.client.aclose()
         await self.main.client.close()
         self.main.database = self._original_database
-        self.main.session_call_counts.clear()
         self.main.app.dependency_overrides.clear()
         self.main.app.dependency_overrides.update(self._original_overrides)
 

@@ -5,7 +5,7 @@ import json
 import sqlite3
 from collections.abc import Mapping, Sequence
 from os import PathLike
-from typing import Any, Self, TypedDict
+from typing import Any, NotRequired, Self, TypedDict
 from uuid import uuid4
 
 from .schema import Analysis
@@ -20,6 +20,7 @@ class HistoryEntry(TypedDict):
     message: str
     analysis: dict[str, Any]
     guide_output: str | None
+    responder_output: NotRequired[dict[str, Any] | None]
     created_at: str
 
 
@@ -98,6 +99,7 @@ CREATE TABLE IF NOT EXISTS history (
     message TEXT NOT NULL,
     analysis TEXT NOT NULL,
     guide_output TEXT,
+    responder_output TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS history_session_id
@@ -122,20 +124,21 @@ WHERE session_id = ?
 """
 
 SELECT_HISTORY = """
-SELECT public_id, message, analysis, guide_output, created_at
+SELECT public_id, message, analysis, guide_output, responder_output, created_at
 FROM history
 WHERE session_id = ?
 ORDER BY id DESC
 """
 
 SELECT_HISTORY_ITEM = """
-SELECT public_id, message, analysis, guide_output, created_at
+SELECT public_id, message, analysis, guide_output, responder_output, created_at
 FROM history
 WHERE public_id = ?
 """
 
 DELETE_HISTORY = "DELETE FROM history WHERE public_id = ? AND session_id = ?"
 UPDATE_HISTORY_GUIDE = "UPDATE history SET guide_output = ? WHERE public_id = ?"
+UPDATE_HISTORY_RESPONDER = "UPDATE history SET responder_output = ? WHERE public_id = ?"
 
 
 class HistoryDatabase(AsyncSQLite):
@@ -144,9 +147,16 @@ class HistoryDatabase(AsyncSQLite):
     async def connect(self) -> Self:
         await super().connect()
         connection = self._get_connection()
+
+        def migrate() -> None:
+            connection.executescript(SCHEMA)
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(history)")}
+            if "responder_output" not in columns:
+                connection.execute("ALTER TABLE history ADD COLUMN responder_output TEXT")
+            connection.commit()
+
         async with self._lock:
-            await asyncio.to_thread(connection.executescript, SCHEMA)
-            await asyncio.to_thread(connection.commit)
+            await asyncio.to_thread(migrate)
         return self
 
     async def save_analysis(
@@ -184,7 +194,8 @@ class HistoryDatabase(AsyncSQLite):
                 "message": row[1],
                 "analysis": json.loads(row[2]),
                 "guide_output": row[3],
-                "created_at": row[4],
+                "responder_output": json.loads(row[4]) if row[4] else None,
+                "created_at": row[5],
             }
             for row in rows
         ]
@@ -199,11 +210,16 @@ class HistoryDatabase(AsyncSQLite):
             "message": row[1],
             "analysis": json.loads(row[2]),
             "guide_output": row[3],
-            "created_at": row[4],
+            "responder_output": json.loads(row[4]) if row[4] else None,
+            "created_at": row[5],
         }
 
     async def save_guide_output(self, history_id: str, guide_output: str) -> None:
         await self.execute(UPDATE_HISTORY_GUIDE, (guide_output, history_id))
+        await self.commit()
+
+    async def save_responder_output(self, history_id: str, output: str) -> None:
+        await self.execute(UPDATE_HISTORY_RESPONDER, (output, history_id))
         await self.commit()
 
     async def delete_history(self, session_id: str, history_id: str) -> bool:

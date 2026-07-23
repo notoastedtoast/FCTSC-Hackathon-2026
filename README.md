@@ -31,7 +31,8 @@ runs in the browser only; it does not call AI or save the exposure selection.
   creates `HistoryDatabase(":memory:")`.
 - That means history resets when the server restarts, the process reloads, or Vercel
   redeploys.
-- The per-session AI call counter is also stored in process memory, so it resets on restart.
+- The per-session AI call counter is stored in a signed, HttpOnly cookie. Set
+  `AI_SESSION_COOKIE_SECRET` in production so it remains valid across restarts.
 - The current backend uses Gemini only. It does not currently use PostgreSQL,
   Supabase, Groq, or request-id idempotency in the live app path.
 
@@ -59,6 +60,7 @@ GEMINI_API_KEY=replace-with-your-gemini-api-key
 BASE_URL=https://generativelanguage.googleapis.com/v1beta/
 GEMINI_MODEL=gemini-3.5-flash
 AI_SESSION_CALL_LIMIT=10
+AI_SESSION_COOKIE_SECRET=replace-with-a-random-secret
 ```
 
 Also supported by the current code:

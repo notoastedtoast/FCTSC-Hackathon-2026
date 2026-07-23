@@ -107,6 +107,13 @@ mobileLayoutQuery.addEventListener('change',syncQuickInputLayout);
 // Hash routing keeps the app single-page while still allowing direct links.
 function routeFromHash(){
   const candidate=window.location.hash.slice(1);
+  if(candidate.startsWith('result/')){
+    try{
+      return {view:'result',resultId:decodeURIComponent(candidate.slice(7))};
+    }catch(error){
+      return {view:'analyze',resultId:null};
+    }
+  }
   if(candidate==='library')return {view:'library',detailId:null};
   if(candidate.startsWith('library/')){
     try{
@@ -116,6 +123,16 @@ function routeFromHash(){
     }
   }
   return {view:Object.hasOwn(viewTitles,candidate)?candidate:'analyze',detailId:null};
+}
+
+let resultFromHistoryId=null;
+
+function openResultPage(id,{fromHistory=false}={}){
+  if(!id)return;
+  resultFromHistoryId=fromHistory?String(id):null;
+  const hash=`#result/${encodeURIComponent(id)}`;
+  if(window.location.hash===hash)syncRoute({focus:true});
+  else window.location.hash=hash;
 }
 
 // Swap visible panels and trigger any page-specific refresh work.
@@ -208,40 +225,16 @@ function handleResultWindowScroll(){
   lastResultScrollY=currentScrollY;
 }
 
-function clearMessageRevealTimers(){
-  messageRevealTimers.forEach(timer=>window.clearTimeout(timer));
-  messageRevealTimers=[];
-}
-
-function revealRowsSequentially(rows,{onComplete=null}={}){
+function revealRows(rows){
   const messages=[...rows];
   messages.forEach(message=>{
-    message.hidden=true;
+    message.hidden=false;
     message.removeAttribute('aria-busy');
   });
-  if(messages.length===0){
-    if(onComplete)onComplete();
-    return;
-  }
-
-  let index=0;
-  const revealNext=()=>{
-    const message=messages[index];
-    message.hidden=false;
-    revealResultMessage(message);
-    index+=1;
-    if(index>=messages.length){
-      if(onComplete)onComplete();
-      return;
-    }
-    const timer=window.setTimeout(revealNext,MESSAGE_REVEAL_INTERVAL_MS);
-    messageRevealTimers.push(timer);
-  };
-  revealNext();
+  revealResultMessage(messages.at(-1));
 }
 
 function showComposerFrame(){
-  clearMessageRevealTimers();
   downloadResultImageButton.disabled=true;
   resultImageStatus.textContent='';
   processingFrame.hidden=true;
@@ -254,7 +247,6 @@ function showComposerFrame(){
 }
 
 function showProcessingFrame(){
-  clearMessageRevealTimers();
   currentShareSummary=null;
   downloadResultImageButton.disabled=true;
   resultImageStatus.textContent='';
@@ -299,6 +291,17 @@ function frontendRiskLevel(level){
   return {low:'safe',medium:'suspicious',high:'dangerous'}[level]||'suspicious';
 }
 
+function guideText(value){
+  const text=String(value||'').trim();
+  try{
+    const parsed=JSON.parse(text);
+    if(Array.isArray(parsed)&&parsed.every(item=>typeof item==='string'))return parsed.join(' ');
+  }catch(error){
+    // Keep ordinary Guide prose unchanged.
+  }
+  return text;
+}
+
 function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=false,guidePending=false}={}){
   const analysis=result?.analysis||{};
   const evidence=analysis.excerpts&&typeof analysis.excerpts==='object'
@@ -330,7 +333,7 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
     character:guideOutput?{
       character_id:'calming-guide',
       title:'Cô tâm lý',
-      message:String(guideOutput)
+      message:guideText(guideOutput)
     }:null,
     character_notice:guideUnavailable
       ?'Cô tâm lý chưa thể tải hướng dẫn bổ sung lúc này.'
@@ -342,6 +345,7 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
 function backendHistoryToItem(entry){
   const result=backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.guide_output});
   result.id=String(entry?.id||'');
+  result.responder_output=entry?.responder_output||null;
   return {
     id:String(entry?.id||''),
     message:String(entry?.message||''),
@@ -408,9 +412,7 @@ async function loadHistory(){
 
 async function showSavedHistoryResult(item){
   if(!item?.result)return;
-  window.location.hash='analyze';
-  switchView('analyze');
-  showResultFrame(item.message,item.result,{fromHistory:true});
+  openResultPage(item.id,{fromHistory:true});
 }
 
 function updateHistorySelectionUi(){
@@ -724,12 +726,23 @@ function setPracticeAnswersDisabled(disabled){
   practiceAnswerButtons.forEach(button=>{button.disabled=disabled});
 }
 
+function shuffledPracticePrompts(){
+  const prompts=[...practicePrompts];
+  for(let index=prompts.length-1;index>0;index-=1){
+    const swapIndex=Math.floor(Math.random()*(index+1));
+    [prompts[index],prompts[swapIndex]]=[prompts[swapIndex],prompts[index]];
+  }
+  return prompts;
+}
+
+let practiceQuestions=shuffledPracticePrompts();
+
 function renderPracticePrompt(){
-  const prompt=practicePrompts[practiceIndex];
+  const prompt=practiceQuestions[practiceIndex];
   practiceLocked=false;
   practiceContent.hidden=false;
   practiceMessage.textContent=prompt.text;
-  practiceProgress.textContent=`Câu ${practiceIndex+1}/${practicePrompts.length}`;
+  practiceProgress.textContent=`Câu ${practiceIndex+1}/${practiceQuestions.length}`;
   practiceScore.textContent=`Điểm ${practiceCorrect}/${practiceAnswered}`;
   practiceFeedback.hidden=true;
   practiceFeedback.textContent='';
@@ -743,7 +756,7 @@ function renderPracticePrompt(){
 
 function submitPracticeAnswer(answer,selectedButton){
   if(practiceLocked)return;
-  const prompt=practicePrompts[practiceIndex];
+  const prompt=practiceQuestions[practiceIndex];
   practiceLocked=true;
   setPracticeAnswersDisabled(true);
   practiceFeedback.hidden=true;
@@ -765,7 +778,7 @@ function submitPracticeAnswer(answer,selectedButton){
     :`Chưa đúng. Đáp án là ${answerLabel}. ${prompt.reason}`;
   practiceFeedback.className=`practice-feedback ${isCorrect?'correct':'incorrect'}`;
   practiceFeedback.hidden=false;
-  practiceNextButton.textContent=practiceIndex===practicePrompts.length-1
+  practiceNextButton.textContent=practiceIndex===practiceQuestions.length-1
     ?'Làm lại từ đầu'
     :'Câu tiếp theo →';
   practiceNextButton.hidden=false;
@@ -775,6 +788,34 @@ function submitPracticeAnswer(answer,selectedButton){
 messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
+async function generateResponder(choice,hotlines,bank=null){
+  try{
+    const output=await requestJson('/responder/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history_id:postAnalysisQuestion.dataset.analysisId,choice,hotlines,bank})});
+    if(!bank&&output.needs_bank&&askForBank(choice,hotlines))return;
+    bankQuestion.hidden=true;
+    renderResponderGuidance(output.steps);
+  }catch(error){showFeedback('Chưa thể tải các bước ứng cứu. Bác hãy thử lại sau.');}
+}
+
+function askForBank(choice,hotlines){
+  const banks=Object.entries(hotlines).filter(([name])=>name!=='Công an');
+  if(banks.length===0)return false;
+  bankOptions.replaceChildren(...banks.map(([name,number])=>{
+    const button=document.createElement('button');
+    button.className='post-analysis-option';
+    button.type='button';
+    button.textContent=name;
+    button.addEventListener('click',async()=>{
+      bankOptions.querySelectorAll('button').forEach(item=>{item.disabled=true});
+      await generateResponder(choice,{[name]:number},name);
+    });
+    return button;
+  }));
+  bankQuestion.hidden=false;
+  revealResultMessage(bankQuestion);
+  return true;
+}
+
 postAnalysisOptions.forEach(option=>option.addEventListener('click',async()=>{
   if(option.disabled)return;
   postAnalysisOptions.forEach(item=>{
@@ -782,12 +823,7 @@ postAnalysisOptions.forEach(option=>option.addEventListener('click',async()=>{
     item.classList.toggle('selected',item===option);
     item.setAttribute('aria-pressed',String(item===option));
   });
-  try{
-    const text=postAnalysisQuestion.dataset.message.toLocaleLowerCase('vi-VN').replaceAll(' ','');
-    const hotlines=Object.fromEntries(Object.entries(await loadTelephones()).filter(([name])=>text.includes(name.toLocaleLowerCase('vi-VN').replaceAll(' ',''))));
-    const output=await requestJson('/responder/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history_id:postAnalysisQuestion.dataset.analysisId,choice:option.dataset.postAnalysisChoice,hotlines})});
-    renderResponderGuidance(output.steps);
-  }catch(error){showFeedback('Chưa thể tải các bước ứng cứu. Bác hãy thử lại sau.');}
+  await generateResponder(option.dataset.postAnalysisChoice,await loadTelephones());
 }));
 downloadResultImageButton.addEventListener('click',async()=>{
   downloadResultImageButton.disabled=true;
@@ -850,10 +886,11 @@ practiceAnswerButtons.forEach(button=>button.addEventListener('click',()=>{
   submitPracticeAnswer(button.dataset.answer,button);
 }));
 practiceNextButton.addEventListener('click',()=>{
-  if(practiceIndex===practicePrompts.length-1){
+  if(practiceIndex===practiceQuestions.length-1){
     practiceIndex=0;
     practiceCorrect=0;
     practiceAnswered=0;
+    practiceQuestions=shuffledPracticePrompts();
   }else{
     practiceIndex+=1;
   }
@@ -895,10 +932,9 @@ async function runAnalysis(submittedText){
 
   try{
     let payload;
-    let resultShown=false;
     if(isOffline){
       payload=ScamCheckOffline.analyze(submittedText);
-      saveOfflineHistory(submittedText,payload);
+      payload.id=saveOfflineHistory(submittedText,payload).id;
     }else{
       try{
         const pending=pendingAnalysisFor(submittedText);
@@ -907,11 +943,6 @@ async function runAnalysis(submittedText){
           headers:{
             'Content-Type':'application/json',
             'X-ScamCheck-Request-ID':pending.requestId
-          },
-          onAnalysisResult:initialPayload=>{
-            resultShown=true;
-            connectivityStatus.hidden=true;
-            showResultFrame(submittedText,initialPayload);
           },
           body:JSON.stringify({text:submittedText,source:'web'})
         });
@@ -936,8 +967,7 @@ async function runAnalysis(submittedText){
       }
     }
     connectivityStatus.hidden=true;
-    if(resultShown)completeResultFrame(submittedText,payload);
-    else showResultFrame(submittedText,payload);
+    openResultPage(payload.id);
   }catch(error){
     hideProcessingFrame();
     inputFrame.style.display='block';
@@ -1122,10 +1152,30 @@ function syncLibraryRoute(){
   else showLibraryList();
 }
 
+async function showResultRoute(resultId){
+  try{
+    const offlineEntry=resultId.startsWith('offline-')
+      ?readOfflineHistory().find(item=>item.id===resultId)
+      :null;
+    const item=offlineEntry||backendHistoryToItem(await requestJson(
+      `/history/${encodeURIComponent(resultId)}`
+    ));
+    if(!item?.result)throw new Error('Saved result not found');
+    const route=routeFromHash();
+    if(route.view!=='result'||route.resultId!==resultId)return;
+    showResultFrame(item.message,item.result,{fromHistory:resultFromHistoryId===resultId});
+    resultFromHistoryId=null;
+  }catch(error){
+    if(routeFromHash().view==='result')window.location.hash='history';
+  }
+}
+
 function syncRoute({focus=false}={}){
   const route=routeFromHash();
+  if(route.view==='analyze'&&resultFrame.classList.contains('active'))showComposerFrame();
   switchView(route.view,{focus});
   if(route.view==='library')syncLibraryRoute();
+  if(route.view==='result'&&route.resultId)void showResultRoute(route.resultId);
 }
 
 checkButton.addEventListener('click',async()=>{

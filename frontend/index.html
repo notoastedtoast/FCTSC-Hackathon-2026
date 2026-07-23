@@ -124,7 +124,9 @@
           <p>ScamCheck đang đối chiếu ngữ cảnh, dấu hiệu gây áp lực và yêu cầu nhạy cảm.</p>
         </div>
       </section>
+    </main>
 
+    <main id="result-view" class="page-view" data-view-panel="result" tabindex="-1" hidden>
       <section id="result-frame" class="result-frame" aria-live="polite">
         <header class="result-header">
           <div><p id="result-context-label" class="eyebrow">Phân tích hoàn tất</p><h1>Kết quả kiểm tra</h1></div>
@@ -171,6 +173,12 @@
                 <button class="post-analysis-option" type="button" data-post-analysis-choice="shared-info" aria-pressed="false">Đã cung cấp thông tin</button>
                 <button class="post-analysis-option" type="button" data-post-analysis-choice="sent-money" aria-pressed="false">Đã chuyển tiền</button>
               </div>
+            </section>
+            <section id="bank-question" class="post-analysis-question" aria-labelledby="bank-question-title" hidden>
+              <p class="post-analysis-kicker">Thông tin cần thêm</p>
+              <h3 id="bank-question-title">Bác đang dùng ngân hàng nào?</h3>
+              <p class="post-analysis-hint">Chọn ngân hàng để Người ứng cứu đưa bước liên hệ phù hợp.</p>
+              <div id="bank-options" class="post-analysis-options" role="group" aria-labelledby="bank-question-title"></div>
             </section>
           </div>
           <section id="responder-block" class="responder-block" aria-labelledby="responder-title" aria-live="polite" hidden>

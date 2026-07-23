@@ -23,7 +23,6 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self._original_database = main.database
         self._original_overrides = main.app.dependency_overrides.copy()
         main.database = self.database
-        main.session_call_counts.clear()
 
         async def get_mock_client():
             return self.gemini
@@ -40,7 +39,6 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         main.database = self._original_database
         main.app.dependency_overrides.clear()
         main.app.dependency_overrides.update(self._original_overrides)
-        main.session_call_counts.clear()
 
     async def test_analyze_returns_and_saves_gemini_result(self) -> None:
         analysis = DetectiveAnalysis(
@@ -176,13 +174,18 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.mock_gemini.add_analysis(output)
         self.database.get_history_item.return_value = {"analysis": Analysis(success=True, analysis=analysis).model_dump()}
 
-        response = await self.client.post("/responder/", json={"history_id": self.history_id, "choice": "sent-money", "hotlines": {"Vietcombank": "1900545413", "Fake": "999"}})
+        response = await self.client.post("/responder/", json={"history_id": self.history_id, "choice": "sent-money", "hotlines": {"Vietcombank": "1900545413", "Fake": "999"}, "bank": "Vietcombank"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), output.model_dump())
         self.assertIn("1900545413", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertIn('"police_hotline": "113"', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertIn('"selected_bank": "Vietcombank"', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
         self.assertNotIn("19009247", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
         self.assertNotIn("999", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.database.save_responder_output.assert_awaited_once_with(
+            self.history_id, output.model_dump_json()
+        )
 
     async def test_telephones_are_public(self) -> None:
         response = await self.client.get("/telephones")
@@ -216,7 +219,9 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
             second = await self.client.post(
                 "/analyze/",
                 json="Hello again",
-                headers={"cookie": "session_id=session-a"},
+                headers={
+                    "cookie": f"session_id=session-a; ai_call_count={first.cookies['ai_call_count']}"
+                },
             )
 
         self.assertEqual(first.status_code, 200)
