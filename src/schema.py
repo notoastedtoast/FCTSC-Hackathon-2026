@@ -6,6 +6,10 @@ from typing import Literal
 
 from .deterministic_checker import RuleFinding
 
+DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/"
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+DEFAULT_AI_SESSION_CALL_LIMIT = 10
+
 
 @dataclass(frozen=True)
 class CharacterConfig[T: BaseModel]:
@@ -136,10 +140,21 @@ class Settings:
 
     @classmethod
     def from_environment(cls):
-        api_keys = os.getenv("GOOGLE_API_KEY") if (default := os.getenv("GEMINI_API_KEY")) is None else default
+        api_keys = (
+            os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+            or ""
+        )
         return cls(
-            os.getenv("BASE_URL"),
-            api_keys.split(","),
-            os.getenv("GEMINI_MODEL"),
-            int(os.environ["AI_SESSION_CALL_LIMIT"]),
+            os.getenv("BASE_URL") or DEFAULT_GEMINI_BASE_URL,
+            [key.strip() for key in api_keys.split(",") if key.strip()],
+            os.getenv("GEMINI_MODEL")
+            or os.getenv("GOOGLE_MODEL")
+            or DEFAULT_GEMINI_MODEL,
+            int(
+                os.getenv(
+                    "AI_SESSION_CALL_LIMIT",
+                    str(DEFAULT_AI_SESSION_CALL_LIMIT),
+                )
+            ),
         )
