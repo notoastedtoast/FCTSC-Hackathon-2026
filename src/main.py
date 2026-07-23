@@ -158,7 +158,8 @@ async def responder(client: ClientDep, data: ResponderRequest) -> ResponderOutpu
         raise HTTPException(409, "A non-low-risk analysis is required")
 
     hotlines = {name: number for name, number in data.hotlines.items() if TELEPHONES.get(name) == number}
-    context = json.dumps({"choice": data.choice, "analysis": stored.analysis.model_dump(), "hotlines": hotlines}, ensure_ascii=False)
+    bank = data.bank if data.bank in hotlines else None
+    context = json.dumps({"choice": data.choice, "analysis": stored.analysis.model_dump(), "hotlines": hotlines, "selected_bank": bank}, ensure_ascii=False)
 
     try:
         output = await client.generate(RESPONDER, context)

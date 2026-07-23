@@ -786,6 +786,34 @@ function submitPracticeAnswer(answer,selectedButton){
 messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
+async function generateResponder(choice,hotlines,bank=null){
+  try{
+    const output=await requestJson('/responder/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history_id:postAnalysisQuestion.dataset.analysisId,choice,hotlines,bank})});
+    if(!bank&&output.needs_bank&&askForBank(choice,hotlines))return;
+    bankQuestion.hidden=true;
+    renderResponderGuidance(output.steps);
+  }catch(error){showFeedback('Chưa thể tải các bước ứng cứu. Bác hãy thử lại sau.');}
+}
+
+function askForBank(choice,hotlines){
+  const banks=Object.entries(hotlines).filter(([name])=>name!=='Công an');
+  if(banks.length===0)return false;
+  bankOptions.replaceChildren(...banks.map(([name,number])=>{
+    const button=document.createElement('button');
+    button.className='post-analysis-option';
+    button.type='button';
+    button.textContent=name;
+    button.addEventListener('click',async()=>{
+      bankOptions.querySelectorAll('button').forEach(item=>{item.disabled=true});
+      await generateResponder(choice,{[name]:number},name);
+    });
+    return button;
+  }));
+  bankQuestion.hidden=false;
+  revealResultMessage(bankQuestion);
+  return true;
+}
+
 postAnalysisOptions.forEach(option=>option.addEventListener('click',async()=>{
   if(option.disabled)return;
   postAnalysisOptions.forEach(item=>{
@@ -793,12 +821,7 @@ postAnalysisOptions.forEach(option=>option.addEventListener('click',async()=>{
     item.classList.toggle('selected',item===option);
     item.setAttribute('aria-pressed',String(item===option));
   });
-  try{
-    const text=postAnalysisQuestion.dataset.message.toLocaleLowerCase('vi-VN').replaceAll(' ','');
-    const hotlines=Object.fromEntries(Object.entries(await loadTelephones()).filter(([name])=>text.includes(name.toLocaleLowerCase('vi-VN').replaceAll(' ',''))));
-    const output=await requestJson('/responder/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history_id:postAnalysisQuestion.dataset.analysisId,choice:option.dataset.postAnalysisChoice,hotlines})});
-    renderResponderGuidance(output.steps);
-  }catch(error){showFeedback('Chưa thể tải các bước ứng cứu. Bác hãy thử lại sau.');}
+  await generateResponder(option.dataset.postAnalysisChoice,await loadTelephones());
 }));
 downloadResultImageButton.addEventListener('click',async()=>{
   downloadResultImageButton.disabled=true;

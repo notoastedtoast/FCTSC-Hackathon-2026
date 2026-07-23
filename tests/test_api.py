@@ -176,11 +176,12 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.mock_gemini.add_analysis(output)
         self.database.get_history_item.return_value = {"analysis": Analysis(success=True, analysis=analysis).model_dump()}
 
-        response = await self.client.post("/responder/", json={"history_id": self.history_id, "choice": "sent-money", "hotlines": {"Vietcombank": "1900545413", "Fake": "999"}})
+        response = await self.client.post("/responder/", json={"history_id": self.history_id, "choice": "sent-money", "hotlines": {"Vietcombank": "1900545413", "Fake": "999"}, "bank": "Vietcombank"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), output.model_dump())
         self.assertIn("1900545413", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertIn('"selected_bank": "Vietcombank"', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
         self.assertNotIn("19009247", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
         self.assertNotIn("999", self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
 

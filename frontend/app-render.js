@@ -1017,6 +1017,8 @@ function renderPsychology(payload){
   const shouldShow=riskLevel==='suspicious'||riskLevel==='dangerous';
   psychologyMessage.replaceChildren();
   postAnalysisQuestion.hidden=true;
+  bankQuestion.hidden=true;
+  bankOptions.replaceChildren();
   postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id));
   postAnalysisQuestion.dataset.analysisId=String(payload.id||'');
   postAnalysisQuestion.dataset.riskLevel=riskLevel||'suspicious';
