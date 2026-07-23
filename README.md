@@ -196,59 +196,120 @@ The backend serves these explicit frontend assets:
 ## Folder structure
 
 ```text
-frontend/
-  index.html
-  styles.css
-  app.js
-  app-data.js
-  app-render.js
-  offline-analyzer.js
-  service-worker.js
-  scamcheck-logo.png
-  detective-avatar.png
-  psychologist-avatar.png
-  responder-avatar.png    Người ứng cứu action-bubble avatar
-src/
-  main.py
-  frontend.py
-  database.py
-  wrapper.py
-  schema.py
-  deterministic_checker.py
-  url_extractor.py
-  data/
-    scam_types.json
-
-tests/
-  test_api.py
-  test_analyzer.py
-  test_catalog.py
-  test_config.py
-  test_database.py
-  test_deterministic_checker.py
-  test_frontend.py
-  test_gemini.py
-  test_live_api.py
-  test_regression.py
-  test_url_extractor.py
-  factories.py
-  mock_gemini.py
-  labeled_messages.json
-  live_inputs.json
+.
+├─ frontend/                    Browser UI and static assets
+│  ├─ index.html                App shell
+│  ├─ styles.css                UI styling
+│  ├─ app-data.js               Shared frontend state and authored datasets
+│  ├─ app-render.js             Result and message rendering helpers
+│  ├─ app.js                    Main frontend controller and event wiring
+│  ├─ offline-analyzer.js       Browser-only offline analysis fallback
+│  ├─ service-worker.js         Offline shell cache
+│  ├─ html2canvas.min.js        Client-side image export helper
+│  ├─ scamcheck-logo.png        Brand asset
+│  ├─ detective-avatar.png      Detective avatar
+│  ├─ psychologist-avatar.png   Cô tâm lý avatar
+│  └─ responder-avatar.png      Người ứng cứu avatar
+│
+├─ src/                         FastAPI backend
+│  ├─ __init__.py
+│  ├─ main.py                   API entrypoint
+│  ├─ frontend.py               Frontend asset routes + scam library routes
+│  ├─ schema.py                 Pydantic models, prompts, env settings
+│  ├─ wrapper.py                Gemini HTTP wrapper
+│  ├─ database.py               Async SQLite-backed history storage
+│  ├─ deterministic_checker.py  Rules-based supporting checks
+│  ├─ url_extractor.py          URL extraction helper
+│  └─ data/
+│     └─ scam_types.json        Authored scam library data
+│
+├─ tests/                       Automated tests and test fixtures
+│  ├─ __init__.py
+│  ├─ gemini_test_case.py
+│  ├─ mock_gemini.py
+│  ├─ test_api.py
+│  ├─ test_config.py
+│  ├─ test_deterministic_checker.py
+│  ├─ test_frontend.py
+│  ├─ test_gemini.py
+│  ├─ test_live_api.py
+│  ├─ test_url_extractor.py
+│  ├─ labeled_messages.json
+│  └─ live_inputs.json
+│
+├─ .env.example                 Example local environment config
+├─ AGENTS.md                    Repo-specific agent instructions
+├─ Makefile                     Common run/test shortcuts
+├─ pyproject.toml               Python project metadata and dependencies
+├─ pyrightconfig.json           Type-checker config
+├─ README.md                    Project overview
+└─ uv.lock                      Locked Python dependency versions
 ```
+
+Notes:
+
+- `__pycache__/` folders are intentionally omitted above.
+- The backend and frontend are both served by `src/main.py`.
+- The current checked-in backend is the smaller stable backend, even though some
+  older branches/history used a larger architecture.
 
 ## Project file guide
 
-- `src/main.py`: FastAPI app, session cookie handling, analyze/guide/history routes
-- `src/frontend.py`: explicit frontend asset routes and scam library API
-- `src/wrapper.py`: Gemini HTTP wrapper
-- `src/schema.py`: Pydantic models, prompts, and environment settings
-- `src/database.py`: async SQLite-backed history adapter used by the app
-- `src/deterministic_checker.py`: extra rules-based warning checks
-- `src/url_extractor.py`: URL extraction helpers for rule checks
-- `frontend/app.js`: main browser controller logic
-- `frontend/app-data.js`: shared state, constants, and authored frontend data
-- `frontend/app-render.js`: rendering helpers
+- `frontend/index.html`
+  - the main page shell with analyze, library, history, and practice views
+
+- `frontend/app-data.js`
+  - shared DOM references, constants, sample messages, quiz prompts, and
+    Người ứng cứu action data
+
+- `frontend/app-render.js`
+  - safe DOM rendering for Detective, Cô tâm lý, and Người ứng cứu result sections
+
+- `frontend/app.js`
+  - the main browser logic: routing, API calls, history, voice input, offline mode,
+    practice flow, and result sequencing
+
+- `frontend/offline-analyzer.js`
+  - conservative offline-only analyzer used when the browser has no network
+
+- `frontend/service-worker.js`
+  - caches only the app shell assets for offline loading
+
+- `src/main.py`
+  - FastAPI app, analyze/guide/history endpoints, session cookie use, and deployment fixes
+
+- `src/frontend.py`
+  - explicit file routes for frontend assets and the scam library API routes
+
+- `src/schema.py`
+  - request/response models, Gemini prompt config, and environment settings
+
+- `src/wrapper.py`
+  - low-level Gemini request/response wrapper with retry on 429
+
+- `src/database.py`
+  - async SQLite helper and session history persistence
+
+- `src/deterministic_checker.py`
+  - rule-based checks for suspicious text, short links, lookalike domains, and Cyrillic signals
+
+- `src/url_extractor.py`
+  - small URL extraction helper used by deterministic checks
+
+- `tests/test_api.py`
+  - API-level integration tests
+
+- `tests/test_frontend.py`
+  - checks for frontend asset presence and wiring
+
+- `tests/test_deterministic_checker.py`
+  - tests for the rule-based detector
+
+- `tests/test_gemini.py` and `tests/mock_gemini.py`
+  - Gemini-related test helpers
+
+- `tests/test_live_api.py`
+  - optional live tests that need real API credentials
 
 ## Deploy note
 
