@@ -299,6 +299,17 @@ function frontendRiskLevel(level){
   return {low:'safe',medium:'suspicious',high:'dangerous'}[level]||'suspicious';
 }
 
+function guideText(value){
+  const text=String(value||'').trim();
+  try{
+    const parsed=JSON.parse(text);
+    if(Array.isArray(parsed)&&parsed.every(item=>typeof item==='string'))return parsed.join(' ');
+  }catch(error){
+    // Keep ordinary Guide prose unchanged.
+  }
+  return text;
+}
+
 function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=false,guidePending=false}={}){
   const analysis=result?.analysis||{};
   const evidence=analysis.excerpts&&typeof analysis.excerpts==='object'
@@ -330,7 +341,7 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
     character:guideOutput?{
       character_id:'calming-guide',
       title:'Cô tâm lý',
-      message:String(guideOutput)
+      message:guideText(guideOutput)
     }:null,
     character_notice:guideUnavailable
       ?'Cô tâm lý chưa thể tải hướng dẫn bổ sung lúc này.'

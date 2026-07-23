@@ -193,6 +193,8 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("sessionAtLimit", script)
         self.assertIn("statusCode===429", script)
         self.assertIn("payload.character_notice", script)
+        self.assertIn("function guideText(value)", script)
+        self.assertIn("Array.isArray(parsed)", script)
         self.assertIn("riskLevel==='suspicious'||riskLevel==='dangerous'", script)
         self.assertIn("psychologyBlock.hidden=true", script)
         self.assertIn("actionSection.hidden=true", script)
