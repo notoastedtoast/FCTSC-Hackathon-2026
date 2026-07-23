@@ -103,10 +103,33 @@
                   <h2>Tin nhắn mẫu</h2>
                 </div>
               </div>
-              <div class="sample-grid">
-                <button class="sample-button" type="button" data-sample="bank">Giả ngân hàng</button>
-                <button class="sample-button" type="button" data-sample="delivery">Giả giao hàng</button>
-                <button class="sample-button" type="button" data-sample="prize">Trúng thưởng</button>
+              <div class="sample-groups">
+                <section class="sample-group" aria-labelledby="sample-safe-title">
+                  <div class="sample-group-heading">
+                    <p id="sample-safe-title" class="sample-group-title safe">An toàn</p>
+                    <span class="sample-group-count">5 ví dụ</span>
+                  </div>
+                  <div class="sample-list">
+                    <button class="sample-button" type="button" data-sample="safe-balance" data-sample-group="safe">Biến động số dư</button>
+                    <button class="sample-button" type="button" data-sample="safe-appointment" data-sample-group="safe">Lịch hẹn giấy tờ</button>
+                    <button class="sample-button" type="button" data-sample="safe-delivery" data-sample-group="safe">Lịch giao hàng</button>
+                    <button class="sample-button" type="button" data-sample="safe-pickup" data-sample-group="safe">Người thân đón</button>
+                    <button class="sample-button" type="button" data-sample="safe-payment" data-sample-group="safe">Nhắc thanh toán chính thức</button>
+                  </div>
+                </section>
+                <section class="sample-group" aria-labelledby="sample-danger-title">
+                  <div class="sample-group-heading">
+                    <p id="sample-danger-title" class="sample-group-title dangerous">Nguy hiểm</p>
+                    <span class="sample-group-count">5 ví dụ</span>
+                  </div>
+                  <div class="sample-list">
+                    <button class="sample-button" type="button" data-sample="danger-bank" data-sample-group="dangerous">Giả ngân hàng</button>
+                    <button class="sample-button" type="button" data-sample="danger-delivery" data-sample-group="dangerous">Giả giao hàng</button>
+                    <button class="sample-button" type="button" data-sample="danger-prize" data-sample-group="dangerous">Trúng thưởng</button>
+                    <button class="sample-button" type="button" data-sample="danger-police" data-sample-group="dangerous">Giả công an</button>
+                    <button class="sample-button" type="button" data-sample="danger-remote" data-sample-group="dangerous">Cài app điều khiển</button>
+                  </div>
+                </section>
               </div>
             </section>
           </aside>
