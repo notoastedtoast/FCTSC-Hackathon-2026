@@ -13,6 +13,9 @@ from .mock_gemini import GEMINI_RESPONSE_STRUCTURE
 
 
 class GeminiWrapperTests(GeminiTestCase):
+    async def test_detective_prompt_marks_out_of_context_fragments_as_low_end_medium(self) -> None:
+        self.assertIn("0.34 to 0.42", DETECTIVE.prompt)
+
     async def test_settings_wrapper_uses_twenty_second_timeout(self) -> None:
         wrapper = GeminiWrapper.from_settings(
             Settings("https://mock-gemini.test/", ["test-key"], "gemini-test", 10)

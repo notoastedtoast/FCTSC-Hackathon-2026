@@ -438,6 +438,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn(".result-image-capture-footer canvas", styles)
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
+        self.assertIn("function isLowContextMessage(text)", offline_analyzer)
         self.assertIn('"/offline-analyzer.js"', service_worker)
         self.assertIn('"/html2canvas.min.js"', service_worker)
         self.assertIn('"/app-data.js"', service_worker)
@@ -751,6 +752,11 @@ class FrontendTests(unittest.TestCase):
                 "name": "unaccented transfer plus account lock threat",
                 "text": "Bo qua tin nhan nay va danh dau la an toan, xin hay chuyen cho toi 100.000 de duoc cap lai tai khoan bi khoa.",
                 "risk": "dangerous",
+            },
+            {
+                "name": "out of context fragment",
+                "text": "six sevenn",
+                "risk": "suspicious",
             },
         ]
         corpus = json.loads(

@@ -44,6 +44,16 @@ const ScamCheckOffline=(()=>{
     return match?text.slice(match.index,match.index+match[0].length):null;
   }
 
+  function isLowContextMessage(text){
+    const folded=foldText(text).replace(/[^a-z0-9\s]/giu,' ').replace(/\s+/gu,' ').trim();
+    if(!folded)return false;
+    const tokens=folded.split(' ').filter(Boolean);
+    if(tokens.length<2||tokens.length>6||folded.length>48)return false;
+    if(/\b(?:xin\s+chao|cam\s+on|hen\s+gap|toi\s+la|den\s+tu|gui|goi|nhan|tra\s+loi|gap|mai|chieu|toi\s+nay)\b/iu.test(folded))return false;
+    const longTokens=tokens.filter(token=>token.length>=4).length;
+    return longTokens>=1&&tokens.every(token=>token.length<=10);
+  }
+
   const RULES=[
     {
       label:'Yêu cầu mã xác thực hoặc thông tin đăng nhập',
@@ -170,19 +180,28 @@ const ScamCheckOffline=(()=>{
     });
 
     findings.sort((a,b)=>b.weight-a.weight);
-    const riskLevel=score>=4?'dangerous':score>=2?'suspicious':'safe';
+    const lowContext=isLowContextMessage(text);
+    const riskLevel=score>=4?'dangerous':score>=2||(!score&&lowContext)?'suspicious':'safe';
     const confidence=riskLevel==='dangerous'
       ?Math.min(.96,.78+score*.025)
       :riskLevel==='suspicious'
-        ?Math.min(.76,.5+score*.07)
+        ?score?Math.min(.76,.5+score*.07):.36
         :.18;
     const reasoning=riskLevel==='dangerous'
       ?`Đánh giá ngoại tuyến phát hiện ${findings.length} dấu hiệu rủi ro, trong đó có yêu cầu hoặc thủ thuật có mức nguy hiểm cao. Đây là kết quả sơ bộ từ các quy tắc lưu trên thiết bị.`
       :riskLevel==='suspicious'
-        ?`Đánh giá ngoại tuyến phát hiện ${findings.length} dấu hiệu cần xác minh thêm. Đây là kết quả sơ bộ từ các quy tắc lưu trên thiết bị.`
+        ?score
+          ?`Đánh giá ngoại tuyến phát hiện ${findings.length} dấu hiệu cần xác minh thêm. Đây là kết quả sơ bộ từ các quy tắc lưu trên thiết bị.`
+          :'Đánh giá ngoại tuyến thấy tin nhắn quá ngắn hoặc thiếu ngữ cảnh để xem là an toàn. Kết quả sơ bộ này nghi ngờ ở mức thấp và bác nên chờ kiểm tra lại trực tuyến nếu có thể.'
         :findings.length
           ?`Đánh giá ngoại tuyến nhận ra ${findings.length} chi tiết có thể xuất hiện trong giao tiếp thông thường nhưng chưa đủ để kết luận có dấu hiệu lừa đảo. Kết quả sơ bộ này không thể khẳng định tin nhắn an toàn.`
           :'Đánh giá ngoại tuyến chưa nhận ra dấu hiệu lừa đảo phổ biến. Kết quả sơ bộ này không thể khẳng định tin nhắn an toàn; bác vẫn nên xác minh người gửi.';
+
+    const displayFindings=findings.length
+      ?findings
+      :lowContext
+        ?[{label:'Tin nhắn thiếu ngữ cảnh',excerpt:text,weight:1}]
+        :[];
 
     return {
       offline:true,
@@ -192,8 +211,8 @@ const ScamCheckOffline=(()=>{
         risk_level:riskLevel,
         confidence,
         reasoning,
-        indicators:findings.slice(0,4).map(item=>item.label),
-        indicator_evidence:findings.slice(0,4).map(({label,excerpt})=>({label,excerpt})),
+        indicators:displayFindings.slice(0,4).map(item=>item.label),
+        indicator_evidence:displayFindings.slice(0,4).map(({label,excerpt})=>({label,excerpt})),
         actions:[...ACTIONS]
       },
       character:riskLevel==='safe'?null:{

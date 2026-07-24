@@ -61,6 +61,10 @@ Use a medium risk score (strictly above 0.33 and below 0.66) when an unverified 
 asks for a non-sensitive confirmation, such as contact, delivery, account, or pickup
 details, but there is no concrete high-risk signal. Do not assign low risk solely because
 the requested detail is not sensitive.
+For content-poor, ambiguous, or out-of-context fragments such as isolated words, numbers,
+or test-like pings with no clear normal purpose, prefer a low-end medium score close to the
+safe boundary (around 0.34 to 0.42), not a high-risk score, unless concrete scam signals
+are present.
 Treat a routine one-way verification-code delivery from an account provider as low risk
 when it says not to share the code and does not ask the recipient to reply, disclose,
 forward, or enter it for another person. Do not treat the code itself as suspicious.
