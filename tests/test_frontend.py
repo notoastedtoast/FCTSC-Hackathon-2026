@@ -603,10 +603,13 @@ class FrontendTests(unittest.TestCase):
         self.assertIn(".detective-section::after", styles)
         self.assertIn("box-shadow:0 9px 24px rgba(26,61,95,.08)", styles)
         self.assertIn(".action-section{display:block}", styles)
-        self.assertIn(".sample-groups{display:grid", styles)
-        self.assertIn('.sample-button[data-sample-group="safe"]', styles)
-        self.assertIn('.sample-button[data-sample-group="dangerous"]', styles)
-        self.assertIn(".sample-card{min-height:320px}", styles)
+        self.assertIn(
+            ".sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))",
+            styles,
+        )
+        self.assertIn('.sample-button[data-sample="bank"]', styles)
+        self.assertIn('.sample-button[data-sample="delivery"]', styles)
+        self.assertIn('.sample-button[data-sample="prize"]', styles)
         self.assertIn("@media (max-width: 620px)", styles)
         self.assertIn(".voice-button{position:absolute", styles)
         self.assertIn(".voice-button.recording", styles)

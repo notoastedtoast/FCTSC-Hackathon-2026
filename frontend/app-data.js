@@ -14,18 +14,7 @@ let recognition=null,isRecording=false,selectedHistoryIds=new Set(),isAnalyzing=
 let autoFollowResult=true,latestResultMessage=null,lastResultScrollY=window.scrollY,resultScrollGuardUntil=0,resultTouchY=null,currentShareSummary=null;
 let practiceIndex=0,practiceCorrect=0,practiceAnswered=0,practiceLocked=false;
 let scamTypes=[],scamTypesPromise=null,telephoneCatalog=null,selectedScamGroup='all',libraryQuery='',libraryScrollPosition=0;
-const samples={
-  'safe-balance':'Tài khoản thanh toán vừa nhận 1.250.000 đồng lúc 09:12. Nếu không nhận ra giao dịch, bác tự mở ứng dụng ngân hàng chính thức để kiểm tra.',
-  'safe-appointment':'Hồ sơ cấp căn cước của bác đã có lịch trả vào thứ Sáu. Vui lòng mang giấy hẹn đến đúng trụ sở đã đăng ký để nhận kết quả.',
-  'safe-delivery':'Bưu tá dự kiến giao đơn vào sáng thứ Hai. Bác có thể xem trạng thái bằng mã đơn trong ứng dụng nơi đã mua hàng.',
-  'safe-pickup':'Chiều nay con đón bác ở cổng bệnh viện lúc 16 giờ như đã hẹn. Xe vẫn mang biển số quen thuộc nên bác cứ chờ ở sảnh chính.',
-  'safe-payment':'Bác vui lòng thanh toán hóa đơn điện tháng này qua ứng dụng chính thức hoặc quầy thu quen thuộc. Không cần bấm vào liên kết lạ.',
-  'danger-bank':'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',
-  'danger-delivery':'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',
-  'danger-prize':'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.',
-  'danger-police':'Công an thông báo bác liên quan đến đường dây rửa tiền. Bác phải giữ bí mật cuộc gọi và chuyển tiền ngay để chứng minh trong sạch.',
-  'danger-remote':'Nhân viên kỹ thuật ngân hàng cần bác cài AnyDesk để hỗ trợ khôi phục tài khoản và nhận lại số dư đang bị treo trong hệ thống.'
-};
+const samples={bank:'NGÂN HÀNG THÔNG BÁO: Tài khoản của quý khách đang bị tạm khóa. Vui lòng truy cập đường link bên dưới và nhập mã OTP để xác minh ngay.',delivery:'Đơn hàng của bạn chưa thể giao vì thiếu phí vận chuyển 25.000 đồng. Hãy bấm vào liên kết và thanh toán trong hôm nay để tránh hoàn hàng.',prize:'Chúc mừng bạn đã trúng giải thưởng 100 triệu đồng. Vui lòng chuyển trước 2 triệu đồng phí hồ sơ vào tài khoản cá nhân để nhận thưởng.'};
 const practicePrompts=[
   {
     "id":"scam-bank-security-upgrade",
