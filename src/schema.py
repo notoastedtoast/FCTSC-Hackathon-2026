@@ -154,7 +154,7 @@ TELEPHONES = {
     "MBBank": "1900545426",  # https://www.mbbank.com.vn/contact
     "Agribank": "1900558818",  # https://www.agribank.com.vn/vn/lien-he
     "Techcombank": "1800588822",  # https://techcombank.com/lien-he
-    "Phản ánh tin nhắn/cuộc gọi rác": "156",  # https://mic.gov.vn/bo-tttt-trien-khai-tong-dai-156-tiep-nhan-phan-anh-tin-nhan-rac-cuoc-goi-rac-cuoc-goi-co-dau-hieu-lua-dao-197155742.htm
+    "Phản ánh tin nhắn/cuộc gọi rác, lừa đảo": "156",  # https://mic.gov.vn/bo-tttt-trien-khai-tong-dai-156-tiep-nhan-phan-anh-tin-nhan-rac-cuoc-goi-rac-cuoc-goi-co-dau-hieu-lua-dao-197155742.htm
     "Công an": "113",
 }
 
