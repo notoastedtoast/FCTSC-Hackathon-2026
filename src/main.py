@@ -7,7 +7,7 @@ import logging
 import json
 import re
 
-from fastapi import Body, Cookie, Depends, FastAPI, HTTPException, Response
+from fastapi import Body, Cookie, Depends, FastAPI, HTTPException, Request, Response
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -38,17 +38,9 @@ logger = logging.getLogger(__name__)
 load_dotenv(override=True)
 
 settings = Settings.from_environment()
-database = HistoryDatabase(":memory:")
 client = GeminiWrapper.from_settings(settings)
 CALL_COUNT_COOKIE = "ai_call_count"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 30
-
-
-async def ensure_database_ready() -> None:
-    """Open the in-memory history store lazily for serverless request handling."""
-    # Deployment fix: some serverless request paths may not run FastAPI lifespan
-    # the same way as local Uvicorn reload mode, so we also connect on demand.
-    await database.connect()
 
 
 def get_client() -> GeminiWrapper:
@@ -57,8 +49,14 @@ def get_client() -> GeminiWrapper:
 
 ClientDep = Annotated[GeminiWrapper, Depends(get_client)]
 
-
 # --- Session quota helpers --------------------------------------------------------
+
+async def get_database(request: Request) -> HistoryDatabase:
+    database: HistoryDatabase = request.app.state.database
+    return await database.connect()
+
+
+DatabaseDep = Annotated[HistoryDatabase, Depends(get_database)]
 
 def _call_count(session_id: str, cookie: str | None) -> int:
     if cookie is None:
@@ -98,7 +96,8 @@ def consume_ai_call(response: Response, session_id: str | None, cookie: str | No
 # --- FastAPI lifecycle ------------------------------------------------------------
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(application: FastAPI):
+    database: HistoryDatabase = application.state.database
     await database.connect()
     try:
         yield
@@ -108,6 +107,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.state.database = HistoryDatabase(":memory:")
 app.include_router(frontend_router)
 
 
@@ -118,14 +118,12 @@ app.include_router(frontend_router)
 @app.post("/analyze/")
 async def analyze(
     client: ClientDep,
+    database: DatabaseDep,
     response: Response,
     data: Annotated[str, Body(...)],
     session_id: Annotated[str | None, Cookie()] = None,
     ai_call_count: Annotated[str | None, Cookie(alias=CALL_COUNT_COOKIE)] = None,
 ) -> Analysis:
-    # Deployment fix: make sure the lightweight DB is ready even if lifespan
-    # startup did not open it before the first request.
-    await ensure_database_ready()
     session_id = consume_ai_call(response, session_id, ai_call_count)
     deterministic_result = await check_message(data)
 
@@ -154,11 +152,9 @@ async def analyze(
 )
 async def guide(
     client: ClientDep,
+    database: DatabaseDep,
     history_id: Annotated[UUID, Body(...)],
 ) -> GuideOutput | Response:
-    # Deployment fix: guide generation also reads/writes history, so it needs
-    # the same lazy DB initialization as /analyze/.
-    await ensure_database_ready()
     item = await database.get_history_item(str(history_id))
     if item is None:
         raise HTTPException(404, "History item not found")
@@ -186,8 +182,7 @@ async def guide(
 # Post-analysis responder: generate urgent next steps using only approved
 # hotline numbers and previously saved analysis context.
 @app.post("/responder/", response_model=ResponderOutput)
-async def responder(client: ClientDep, data: ResponderRequest) -> ResponderOutput:
-    await ensure_database_ready()
+async def responder(client: ClientDep, database: DatabaseDep, data: ResponderRequest) -> ResponderOutput:
     item = await database.get_history_item(str(data.history_id))
 
     if item is None:
@@ -217,11 +212,9 @@ async def responder(client: ClientDep, data: ResponderRequest) -> ResponderOutpu
 # Session-scoped history list used by the History page in the frontend.
 @app.get("/history/")
 async def history(
+    database: DatabaseDep,
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> list[HistoryEntry]:
-    # Deployment fix: history routes must be safe even when startup hooks were
-    # skipped by the hosting environment.
-    await ensure_database_ready()
     if session_id is None:
         return []
     return await database.get_history(session_id)
@@ -230,9 +223,7 @@ async def history(
 # Public fetch for one saved result by UUID. The frontend uses this for
 # result-page deep links and history review.
 @app.get("/history/{history_id}")
-async def history_item(history_id: UUID) -> HistoryEntry:
-    # Deployment fix: keep single-history fetch working in serverless mode too.
-    await ensure_database_ready()
+async def history_item(history_id: UUID, database: DatabaseDep) -> HistoryEntry:
     item = await database.get_history_item(str(history_id))
     if item is None:
         raise HTTPException(404, "History item not found")
@@ -243,11 +234,9 @@ async def history_item(history_id: UUID) -> HistoryEntry:
 @app.delete("/history/{history_id}", status_code=204)
 async def delete_history(
     history_id: UUID,
+    database: DatabaseDep,
     session_id: Annotated[str | None, Cookie()] = None,
 ) -> None:
-    # Deployment fix: deletion touches the same in-memory DB, so initialize it
-    # lazily here as well.
-    await ensure_database_ready()
     if session_id is None:
         raise HTTPException(401, "Session ID is required")
     if not await database.delete_history(session_id, str(history_id)):
