@@ -808,7 +808,7 @@ async function prepareOnlineResult(submittedText,analysisResult){
   const payload=backendAnalysisToPayload(analysisResult,{guideOutput,guideUnavailable});
   if(entry){
     payload.id=String(entry.id||'');
-    payload.date=String(entry.created_at||new Date().toISOString());
+    payload.date=normalizeHistoryTimestamp(entry.created_at)||new Date().toISOString();
   }
   return saveOnlineHistoryEntry({
     id:String(payload.id||entry?.id||`online-${Date.now()}-${Math.random().toString(16).slice(2)}`),
@@ -1302,7 +1302,7 @@ async function showResultRoute(resultId){
     if(!item?.result)throw new Error('Saved result not found');
     const route=routeFromHash();
     if(route.view!=='result'||route.resultId!==resultId)return;
-    showResultFrame(item.message,item.result,{
+    showResultFrame(item.message,{...item.result,date:item.result.date||item.date},{
       fromHistory:route.fromHistory||resultFromHistoryId===resultId
     });
     resultFromHistoryId=null;

@@ -353,6 +353,7 @@ function resultShareSummary(originalText,payload){
     actions:defaultActions.map((fallback,index)=>
       normalizeShareText(detective.actions?.[index]||fallback)
     ),
+    analyzedAt:payload?.date,
     resultUrl:new URL('/#analyze',SHARE_PRODUCT_URL).href
   };
 }
@@ -712,16 +713,15 @@ async function saveCurrentResultImage(){
     :null;
   const canvas=await createDetectiveDomCaptureCanvas();
   const blob=await canvasToPngBlob(canvas);
-  const now = new Date();
-  const pad = value => String(value).padStart(2, '0');
-
-  const timestamp =
-    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_` +
-    `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-
-  const filename = `scamcheck-ket-qua-${timestamp}.png`;
+  const analyzedAt=new Date(currentShareSummary.analyzedAt);
+  if(Number.isNaN(analyzedAt.getTime()))throw new Error('Analysis timestamp is unavailable');
+  const pad=value=>String(value).padStart(2,'0');
+  const timestamp=
+    `${analyzedAt.getFullYear()}-${pad(analyzedAt.getMonth()+1)}-${pad(analyzedAt.getDate())}_`+
+    `${pad(analyzedAt.getHours())}-${pad(analyzedAt.getMinutes())}-${pad(analyzedAt.getSeconds())}`;
+  const filename=`scamcheck-ket-qua-${timestamp}.png`;
   const file=typeof File==='function'
-    ?new File([blob],filename,{type:'image/png',lastModified:Date.now()})
+    ?new File([blob],filename,{type:'image/png',lastModified:analyzedAt.getTime()})
     :null;
   if(canAttemptFileShare&&file){
     let canShareFile=false;
