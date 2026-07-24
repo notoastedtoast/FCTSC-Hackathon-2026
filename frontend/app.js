@@ -112,9 +112,24 @@ function routeFromHash(){
   const candidate=window.location.hash.slice(1);
   if(candidate.startsWith('result/')){
     try{
-      return {view:'result',resultId:decodeURIComponent(candidate.slice(7))};
+      return {
+        view:'result',
+        resultId:decodeURIComponent(candidate.slice(7)),
+        fromHistory:false
+      };
     }catch(error){
       return {view:'analyze',resultId:null};
+    }
+  }
+  if(candidate.startsWith('history/')){
+    try{
+      return {
+        view:'result',
+        resultId:decodeURIComponent(candidate.slice(8)),
+        fromHistory:true
+      };
+    }catch(error){
+      return {view:'history',resultId:null,fromHistory:false};
     }
   }
   if(candidate==='library')return {view:'library',detailId:null};
@@ -133,7 +148,8 @@ let resultFromHistoryId=null;
 function openResultPage(id,{fromHistory=false}={}){
   if(!id)return;
   resultFromHistoryId=fromHistory?String(id):null;
-  const hash=`#result/${encodeURIComponent(id)}`;
+  const routePrefix=fromHistory?'history':'result';
+  const hash=`#${routePrefix}/${encodeURIComponent(id)}`;
   if(window.location.hash===hash)syncRoute({focus:true});
   else window.location.hash=hash;
 }
@@ -656,7 +672,9 @@ function apiErrorMessage(statusCode,detail){
   if(statusCode===502)return 'Dịch vụ phân tích đang tạm thời gián đoạn. Bác vui lòng thử lại sau.';
   if(statusCode===503)return 'Không thể lưu kết quả lúc này. Bác vui lòng thử lại sau.';
   if(statusCode===422)return 'Nội dung gửi lên chưa hợp lệ. Bác hãy kiểm tra và thử lại.';
-  return typeof detail==='string'&&detail?'Không thể hoàn tất yêu cầu lúc này.':'Không thể kết nối tới máy chủ.';
+  return typeof detail==='string'&&detail
+    ?'Không thể hoàn tất yêu cầu lúc này.'
+    :'Máy chủ đã phản hồi nhưng dữ liệu trả về chưa hợp lệ. Bác vui lòng thử lại sau.';
 }
 
 async function requestJson(path,options={}){
@@ -683,7 +701,19 @@ async function requestJson(path,options={}){
     }
   }
 
-  const response=await fetch(requestPath,requestOptions);
+  let response;
+  try{
+    response=await fetch(requestPath,requestOptions);
+  }catch(error){
+    const requestError=new Error(
+      navigator.onLine
+        ?'Không thể kết nối tới dịch vụ ScamCheck. Máy chủ có thể đang tạm thời gián đoạn; bác vui lòng thử lại sau.'
+        :'Thiết bị đang mất kết nối mạng. Nội dung vẫn được giữ để bác thử lại khi có mạng.'
+    );
+    requestError.transportFailure=true;
+    requestError.networkInterrupted=!navigator.onLine;
+    throw requestError;
+  }
   let payload=null;
   try{
     payload=await response.json();
@@ -694,6 +724,13 @@ async function requestJson(path,options={}){
     const requestError=new Error(apiErrorMessage(response.status,payload?.detail));
     requestError.status=response.status;
     throw requestError;
+  }
+  if(requestPath==='/analyze/'&&payload===null){
+    const responseError=new Error(
+      'Dịch vụ phân tích đã phản hồi nhưng kết quả không đúng định dạng. Bác vui lòng thử lại sau.'
+    );
+    responseError.responseInvalid=true;
+    throw responseError;
   }
   if(requestPath==='/analyze/'&&submittedText!==null){
     if(onAnalysisResult){
@@ -1019,35 +1056,28 @@ async function runAnalysis(submittedText){
       payload=ScamCheckOffline.analyze(submittedText);
       payload.id=saveOfflineHistory(submittedText,payload).id;
     }else{
+      const pending=pendingAnalysisFor(submittedText);
+      payload=await requestJson('/analyze',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'X-ScamCheck-Request-ID':pending.requestId
+        },
+        body:JSON.stringify({text:submittedText,source:'web'})
+      });
       try{
-        const pending=pendingAnalysisFor(submittedText);
-        payload=await requestJson('/analyze',{
-          method:'POST',
-          headers:{
-            'Content-Type':'application/json',
-            'X-ScamCheck-Request-ID':pending.requestId
-          },
-          body:JSON.stringify({text:submittedText,source:'web'})
-        });
-        try{
-          sessionStorage.removeItem(PENDING_ANALYSIS_KEY);
-        }catch(error){
-          // The response is still valid when tab storage is unavailable.
-        }
-        if(payload?.usage)applyUsage(payload.usage);
-        if(payload?.id&&!historyCache.some(item=>item.id===payload.id))historyCache.unshift({
-          id:payload.id,
-          message:submittedText,
-          date:payload.date||new Date().toISOString(),
-          result:payload,
-          offline:false
-        });
+        sessionStorage.removeItem(PENDING_ANALYSIS_KEY);
       }catch(error){
-        if(Number.isInteger(error.status))throw error;
-        const interruptedError=new Error('Kết nối mạng không ổn định. Nội dung vẫn được giữ trong ô nhập; bác hãy thử lại khi đường truyền ổn định.');
-        interruptedError.networkInterrupted=true;
-        throw interruptedError;
+        // The response is still valid when tab storage is unavailable.
       }
+      if(payload?.usage)applyUsage(payload.usage);
+      if(payload?.id&&!historyCache.some(item=>item.id===payload.id))historyCache.unshift({
+        id:payload.id,
+        message:submittedText,
+        date:payload.date||new Date().toISOString(),
+        result:payload,
+        offline:false
+      });
     }
     connectivityStatus.hidden=true;
     openResultPage(payload.id);
@@ -1055,7 +1085,10 @@ async function runAnalysis(submittedText){
     hideProcessingFrame();
     inputFrame.style.display='block';
     if(error.networkInterrupted){
-      showConnectivityNotice('Kết nối mạng không ổn định. Bác hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại.');
+      showConnectivityNotice('Thiết bị đang mất kết nối. ScamCheck sẽ phân tích sơ bộ ngay trên thiết bị.');
+      showFeedback(error.message,'info');
+    }else if(error.transportFailure){
+      connectivityStatus.hidden=true;
       showFeedback(error.message,'info');
     }else{
       if(error.status===429){
@@ -1065,7 +1098,11 @@ async function runAnalysis(submittedText){
         renderRemainingAnalyses();
       }
       if(navigator.onLine)connectivityStatus.hidden=true;
-      showFeedback(Number.isInteger(error.status)?error.message:'Không thể kết nối tới máy chủ.');
+      showFeedback(
+        Number.isInteger(error.status)||error.responseInvalid
+          ?error.message
+          :'Đã xảy ra lỗi khi xử lý kết quả. Nội dung vẫn được giữ; bác vui lòng thử lại.'
+      );
     }
     void loadUsageCompat();
     messageInput.focus();
@@ -1244,7 +1281,9 @@ async function showResultRoute(resultId){
     if(!item?.result)throw new Error('Saved result not found');
     const route=routeFromHash();
     if(route.view!=='result'||route.resultId!==resultId)return;
-    showResultFrame(item.message,item.result,{fromHistory:resultFromHistoryId===resultId});
+    showResultFrame(item.message,item.result,{
+      fromHistory:route.fromHistory||resultFromHistoryId===resultId
+    });
     resultFromHistoryId=null;
   }catch(error){
     if(routeFromHash().view==='result')window.location.hash='history';
@@ -1255,6 +1294,12 @@ function syncRoute({focus=false}={}){
   const route=routeFromHash();
   if(route.view==='analyze'&&resultFrame.classList.contains('active'))showComposerFrame();
   switchView(route.view,{focus});
+  if(route.view==='result'&&route.fromHistory){
+    navLinks.forEach(link=>{
+      if(link.dataset.view==='history')link.setAttribute('aria-current','page');
+      else link.removeAttribute('aria-current');
+    });
+  }
   if(route.view==='library')syncLibraryRoute();
   if(route.view==='result'&&route.resultId)void showResultRoute(route.resultId);
 }
