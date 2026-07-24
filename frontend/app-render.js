@@ -712,8 +712,14 @@ async function saveCurrentResultImage(){
     :null;
   const canvas=await createDetectiveDomCaptureCanvas();
   const blob=await canvasToPngBlob(canvas);
-  const date=new Date().toISOString().slice(0,10);
-  const filename=`scamcheck-ket-qua-${date}.png`;
+  const now = new Date();
+  const pad = value => String(value).padStart(2, '0');
+
+  const timestamp =
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_` +
+    `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+
+  const filename = `scamcheck-ket-qua-${timestamp}.png`;
   const file=typeof File==='function'
     ?new File([blob],filename,{type:'image/png',lastModified:Date.now()})
     :null;
