@@ -625,14 +625,26 @@ async function confirmDeleteSelectedHistory(){
     const selected=getHistory().filter(item=>selectedHistoryIds.has(item.id));
     const onlineIds=selected.filter(item=>!item.offline).map(item=>item.id);
     const offlineIds=new Set(selected.filter(item=>item.offline).map(item=>item.id));
-    await Promise.all(onlineIds.map(id=>requestJson(`/history/${encodeURIComponent(id)}`,{
-      method:'DELETE'
-    })));
+    // Stale saved entries may no longer exist on the backend after a restart.
+    // Treat 404 as safe to remove locally so History stays usable.
+    const removableOnlineIds=new Set();
+    await Promise.all(onlineIds.map(async id=>{
+      try{
+        await requestJson(`/history/${encodeURIComponent(id)}`,{method:'DELETE'});
+        removableOnlineIds.add(id);
+      }catch(error){
+        if(error?.status===404){
+          removableOnlineIds.add(id);
+          return;
+        }
+        throw error;
+      }
+    }));
     if(offlineIds.size){
       writeOfflineHistory(readOfflineHistory().filter(item=>!offlineIds.has(item.id)));
     }
-    if(onlineIds.length){
-      writeOnlineHistory(readOnlineHistory().filter(item=>!onlineIds.includes(item.id)));
+    if(removableOnlineIds.size){
+      writeOnlineHistory(readOnlineHistory().filter(item=>!removableOnlineIds.has(item.id)));
     }
     selectedHistoryIds.clear();
     deleteConfirmModal.classList.remove('open');
