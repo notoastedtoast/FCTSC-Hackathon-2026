@@ -192,6 +192,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         response = await self.client.get("/telephones")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["Vietcombank"], "1900545413")
+        self.assertEqual(response.json()["Phản ánh tin nhắn/cuộc gọi rác"], "156")
 
     async def test_responder_accepts_no_bank_selection(self) -> None:
         analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})
@@ -204,6 +205,24 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('"no_bank": true', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
         self.assertIn('"selected_bank": null', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+
+    async def test_responder_accepts_156_for_spam_and_scam_reports(self) -> None:
+        analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})
+        output = ResponderOutput(steps=["Gọi 156 để phản ánh.", "Gọi 113 nếu cần hỗ trợ khẩn cấp."])
+        self.mock_gemini.add_analysis(output)
+        self.database.get_history_item.return_value = {"analysis": Analysis(success=True, analysis=analysis).model_dump()}
+
+        response = await self.client.post(
+            "/responder/",
+            json={
+                "history_id": self.history_id,
+                "choice": "opened-link",
+                "hotlines": {"Phản ánh tin nhắn/cuộc gọi rác": "156"},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('"Phản ánh tin nhắn/cuộc gọi rác": "156"', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
 
     async def test_responder_rejects_unknown_output_phone(self) -> None:
         analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})

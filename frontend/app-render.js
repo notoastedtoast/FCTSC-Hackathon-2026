@@ -1059,7 +1059,7 @@ function responderExposureFlags(originalText,payload){
   };
 }
 
-function renderPsychology(originalText,payload){
+function renderPsychology(originalText,payload,{allowResponderQuestion=true}={}){
   const riskLevel=payload?.detective?.risk_level;
   const shouldShow=riskLevel==='suspicious'||riskLevel==='dangerous';
   const exposures=responderExposureFlags(originalText,payload);
@@ -1068,7 +1068,7 @@ function renderPsychology(originalText,payload){
   postAnalysisQuestion.hidden=true;
   bankQuestion.hidden=true;
   bankOptions.replaceChildren();
-  postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id&&shouldOfferResponder));
+  postAnalysisQuestion.dataset.eligible=String(Boolean(allowResponderQuestion&&shouldShow&&!payload.offline&&payload.id&&shouldOfferResponder));
   postAnalysisQuestion.dataset.analysisId=String(payload.id||'');
   postAnalysisQuestion.dataset.riskLevel=riskLevel||'suspicious';
   responderBlock.hidden=true;
@@ -1139,7 +1139,7 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
     :risk.description;
 
   renderSignals(detective,payload.deterministic_findings,text);
-  renderPsychology(text,payload);
+  renderPsychology(text,payload,{allowResponderQuestion:!fromHistory});
   if(Array.isArray(payload.responder_output?.steps)&&!payload.responder_output.needs_bank){
     renderResponderGuidance(payload.responder_output.steps);
   }

@@ -937,7 +937,9 @@ async function generateResponder(choice,hotlines,bank=null,noBank=false){
 }
 
 function askForBank(choice,hotlines){
-  const banks=Object.entries(hotlines).filter(([name])=>name!=='Công an');
+  const banks=Object.entries(hotlines).filter(([name])=>
+    name!=='Công an'&&name!=='Phản ánh tin nhắn/cuộc gọi rác'
+  );
   const buttons=banks.map(([name,number])=>{
     const button=document.createElement('button');
     button.className='post-analysis-option';
@@ -955,8 +957,10 @@ function askForBank(choice,hotlines){
   noBankButton.textContent='Không có ngân hàng trong danh sách';
   noBankButton.addEventListener('click',async()=>{
     bankOptions.querySelectorAll('button').forEach(item=>{item.disabled=true});
-    const police=hotlines['Công an'];
-    await generateResponder(choice,police?{'Công an':police}:{},null,true);
+    const reportingHotlines=Object.fromEntries(Object.entries(hotlines).filter(([name])=>
+      name==='Công an'||name==='Phản ánh tin nhắn/cuộc gọi rác'
+    ));
+    await generateResponder(choice,reportingHotlines,null,true);
   });
   bankOptions.replaceChildren(...buttons,noBankButton);
   bankQuestion.hidden=false;

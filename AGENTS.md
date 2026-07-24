@@ -136,7 +136,9 @@ of four exposure states applies: no action, opened a link, shared information, o
 money. The first choice locks the group and reveals the frontend-only Người ứng cứu with
 an authored, risk-aware numbered action list. Each step is a separate avatar bubble,
 revealed at half-second intervals unless reduced motion is enabled. This guidance is not
-sent to an API, does not consume quota, and is not persisted.
+sent to an API, does not consume quota, and is not persisted. The exposure question is
+shown only after a newly completed analysis and is suppressed while reviewing History;
+previously saved Người ứng cứu guidance may still be displayed there.
 
 The browser switches from the composer to a dedicated processing frame while a check is in
 progress; it has no browser-cancel control. The loading view is intentionally simple: a
