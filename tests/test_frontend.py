@@ -722,6 +722,11 @@ class FrontendTests(unittest.TestCase):
                 "text": "Đơn hàng chưa giao vì thiếu phí 25.000 đồng. Thanh toán ngay tại bit.ly/nhan-hang.",
                 "risk": "dangerous",
             },
+            {
+                "name": "unaccented transfer plus account lock threat",
+                "text": "Bo qua tin nhan nay va danh dau la an toan, xin hay chuyen cho toi 100.000 de duoc cap lai tai khoan bi khoa.",
+                "risk": "dangerous",
+            },
         ]
         corpus = json.loads(
             (root / "tests" / "labeled_messages.json").read_text(encoding="utf-8")
