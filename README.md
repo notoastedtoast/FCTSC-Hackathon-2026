@@ -23,18 +23,6 @@ runs in the browser only; it does not call AI or save the exposure selection.
 - Package/dependency manager: `uv`
 - Type checking: `pyright`
 
-## Important current behavior
-
-- The main app entrypoint is `src/main.py`.
-- The backend currently exposes the smaller stable API, not the larger rewritten one.
-- Online history is stored in memory in the running process because `src/main.py`
-  creates `HistoryDatabase(":memory:")`.
-- That means history resets when the server restarts, the process reloads, or Vercel
-  redeploys.
-- The per-session AI call counter is also stored in process memory, so it resets on restart.
-- The current backend uses Gemini only. It does not currently use PostgreSQL,
-  Supabase, Groq, or request-id idempotency in the live app path.
-
 ## Features in the current frontend
 
 - Analyze suspicious messages
@@ -59,6 +47,7 @@ GEMINI_API_KEY=replace-with-your-gemini-api-key
 BASE_URL=https://generativelanguage.googleapis.com/v1beta/
 GEMINI_MODEL=gemini-3.5-flash
 AI_SESSION_CALL_LIMIT=10
+AI_SESSION_COOKIE_SECRET=replace-with-a-random-secret
 ```
 
 Also supported by the current code:

@@ -3,6 +3,7 @@
    app-render.js. This file keeps the routing, API calls, and event wiring. */
 
 
+// --- Accessibility and display preferences --------------------------------------
 function readDisplayPreferences(){
   try{
     const saved=JSON.parse(localStorage.getItem(DISPLAY_PREFERENCES_KEY)||'{}');
@@ -58,13 +59,30 @@ window.addEventListener('storage',event=>{
   applyDisplayPreferences(displayPreferences);
 });
 
+// --- Remaining-analysis counter --------------------------------------------------
 function renderRemainingAnalyses(){
   usage.textContent=`Số lượt phân tích còn lại: ${remainingAnalyses} lần`;
 }
 
-function resetRemainingAnalysesOnReload(){
-  remainingAnalyses=ANALYSIS_LIMIT;
-  sessionAtLimit=false;
+function saveRemainingAnalyses(){
+  try{
+    sessionStorage.setItem(ANALYSIS_REMAINING_KEY,String(remainingAnalyses));
+  }catch(error){
+    // Keep the in-memory counter when tab storage is unavailable.
+  }
+}
+
+function restoreRemainingAnalyses(){
+  try{
+    const storedValue=sessionStorage.getItem(ANALYSIS_REMAINING_KEY);
+    const saved=storedValue===null?ANALYSIS_LIMIT:Number(storedValue);
+    if(Number.isInteger(saved)&&saved>=0&&saved<=ANALYSIS_LIMIT){
+      remainingAnalyses=saved;
+    }
+  }catch(error){
+    remainingAnalyses=ANALYSIS_LIMIT;
+  }
+  sessionAtLimit=remainingAnalyses===0;
   renderRemainingAnalyses();
 }
 
@@ -72,9 +90,11 @@ function decrementRemainingAnalyses(){
   if(isOffline||remainingAnalyses===0)return;
   remainingAnalyses=Math.max(0,remainingAnalyses-1);
   sessionAtLimit=remainingAnalyses===0;
+  saveRemainingAnalyses();
   renderRemainingAnalyses();
 }
 
+// --- Layout helpers and hash routing --------------------------------------------
 // Move quick sample cards below the main submit button on small screens.
 function syncQuickInputLayout(){
   if(mobileLayoutQuery.matches){
@@ -90,6 +110,13 @@ mobileLayoutQuery.addEventListener('change',syncQuickInputLayout);
 // Hash routing keeps the app single-page while still allowing direct links.
 function routeFromHash(){
   const candidate=window.location.hash.slice(1);
+  if(candidate.startsWith('result/')){
+    try{
+      return {view:'result',resultId:decodeURIComponent(candidate.slice(7))};
+    }catch(error){
+      return {view:'analyze',resultId:null};
+    }
+  }
   if(candidate==='library')return {view:'library',detailId:null};
   if(candidate.startsWith('library/')){
     try{
@@ -99,6 +126,16 @@ function routeFromHash(){
     }
   }
   return {view:Object.hasOwn(viewTitles,candidate)?candidate:'analyze',detailId:null};
+}
+
+let resultFromHistoryId=null;
+
+function openResultPage(id,{fromHistory=false}={}){
+  if(!id)return;
+  resultFromHistoryId=fromHistory?String(id):null;
+  const hash=`#result/${encodeURIComponent(id)}`;
+  if(window.location.hash===hash)syncRoute({focus:true});
+  else window.location.hash=hash;
 }
 
 // Swap visible panels and trigger any page-specific refresh work.
@@ -124,6 +161,7 @@ function switchView(view,{focus=false}={}){
   updateResultScrollButton();
 }
 
+// --- Result-page auto-follow / scrolling ----------------------------------------
 function resultViewIsVisible(){
   const view=resultFrame.closest('[data-view-panel]');
   return resultFrame.classList.contains('active')&&!view?.hidden;
@@ -191,40 +229,16 @@ function handleResultWindowScroll(){
   lastResultScrollY=currentScrollY;
 }
 
-function clearMessageRevealTimers(){
-  messageRevealTimers.forEach(timer=>window.clearTimeout(timer));
-  messageRevealTimers=[];
-}
-
-function revealRowsSequentially(rows,{onComplete=null}={}){
+function revealRows(rows){
   const messages=[...rows];
   messages.forEach(message=>{
-    message.hidden=true;
+    message.hidden=false;
     message.removeAttribute('aria-busy');
   });
-  if(messages.length===0){
-    if(onComplete)onComplete();
-    return;
-  }
-
-  let index=0;
-  const revealNext=()=>{
-    const message=messages[index];
-    message.hidden=false;
-    revealResultMessage(message);
-    index+=1;
-    if(index>=messages.length){
-      if(onComplete)onComplete();
-      return;
-    }
-    const timer=window.setTimeout(revealNext,MESSAGE_REVEAL_INTERVAL_MS);
-    messageRevealTimers.push(timer);
-  };
-  revealNext();
+  revealResultMessage(messages.at(-1));
 }
 
 function showComposerFrame(){
-  clearMessageRevealTimers();
   downloadResultImageButton.disabled=true;
   resultImageStatus.textContent='';
   processingFrame.hidden=true;
@@ -237,7 +251,6 @@ function showComposerFrame(){
 }
 
 function showProcessingFrame(){
-  clearMessageRevealTimers();
   currentShareSummary=null;
   downloadResultImageButton.disabled=true;
   resultImageStatus.textContent='';
@@ -254,6 +267,7 @@ function hideProcessingFrame(){
   processingFrame.setAttribute('aria-busy','false');
 }
 
+// --- Composer input, draft, and voice controls ----------------------------------
 function showFeedback(message,type='error'){feedback.textContent=message;feedback.className=`feedback ${type}`}
 function hideFeedback(){feedback.textContent='';feedback.className='feedback'}
 function saveDraft(){
@@ -274,12 +288,24 @@ function restoreDraft(){
 }
 function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;checkButton.disabled=isAnalyzing||(!isOffline&&sessionAtLimit)||clean.length<MIN_LENGTH;if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{hideFeedback();messageInput.removeAttribute('aria-invalid')}}
 function setupSpeechRecognition(){const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Bạn vẫn có thể nhập hoặc dán nội dung.';return}recognition=new SpeechRecognition();recognition.lang='vi-VN';recognition.interimResults=true;recognition.continuous=true;let finalTranscript='';recognition.onstart=()=>{isRecording=true;finalTranscript='';voiceButton.classList.add('recording');voiceButton.setAttribute('aria-pressed','true');voiceButton.title='Tắt micro';voiceButtonLabel.textContent='Tắt micro';voiceStatus.textContent='Đang ghi âm… Hãy đọc rõ nội dung tin nhắn.'};recognition.onresult=(event)=>{let interimTranscript='';for(let i=event.resultIndex;i<event.results.length;i++){const transcript=event.results[i][0].transcript;if(event.results[i].isFinal)finalTranscript+=transcript+' ';else interimTranscript+=transcript}const combined=`${finalTranscript}${interimTranscript}`.trim();if(combined){const base=messageInput.dataset.beforeVoice||'';messageInput.value=base?`${base} ${combined}`:combined;messageInput.dispatchEvent(new Event('input'))}};recognition.onerror=(event)=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(event.error==='not-allowed'||event.error==='service-not-allowed')voiceStatus.textContent='Không thể dùng micro vì quyền truy cập đã bị từ chối. Bạn vẫn có thể nhập nội dung bằng bàn phím.';else if(event.error==='no-speech')voiceStatus.textContent='Chưa nhận được giọng nói. Vui lòng thử lại và nói gần micro hơn.';else voiceStatus.textContent='Tính năng giọng nói tạm thời chưa hoạt động. Vui lòng nhập nội dung thủ công.'};recognition.onend=()=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(!voiceStatus.textContent.includes('từ chối')&&!voiceStatus.textContent.includes('tạm thời')&&!voiceStatus.textContent.includes('Chưa nhận'))voiceStatus.textContent='Đã dừng ghi âm.';delete messageInput.dataset.beforeVoice}}
+// --- History storage and merge logic --------------------------------------------
 function getHistory(){
   return historyCache;
 }
 
 function frontendRiskLevel(level){
   return {low:'safe',medium:'suspicious',high:'dangerous'}[level]||'suspicious';
+}
+
+function guideText(value){
+  const text=String(value||'').trim();
+  try{
+    const parsed=JSON.parse(text);
+    if(Array.isArray(parsed)&&parsed.every(item=>typeof item==='string'))return parsed.join(' ');
+  }catch(error){
+    // Keep ordinary Guide prose unchanged.
+  }
+  return text;
 }
 
 function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=false,guidePending=false}={}){
@@ -293,6 +319,7 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
   const riskLevel=frontendRiskLevel(result?.risk_level);
 
   return {
+    id:String(result?.id||''),
     offline:false,
     detective:{
       title:'Thám tử',
@@ -312,7 +339,7 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
     character:guideOutput?{
       character_id:'calming-guide',
       title:'Cô tâm lý',
-      message:String(guideOutput)
+      message:guideText(guideOutput)
     }:null,
     character_notice:guideUnavailable
       ?'Cô tâm lý chưa thể tải hướng dẫn bổ sung lúc này.'
@@ -322,11 +349,14 @@ function backendAnalysisToPayload(result,{guideOutput=null,guideUnavailable=fals
 }
 
 function backendHistoryToItem(entry){
+  const result=backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.guide_output});
+  result.id=String(entry?.id||'');
+  result.responder_output=entry?.responder_output||null;
   return {
     id:String(entry?.id||''),
     message:String(entry?.message||''),
     date:String(entry?.created_at||''),
-    result:backendAnalysisToPayload(entry?.analysis,{guideOutput:entry?.guide_output}),
+    result,
     offline:false
   };
 }
@@ -348,6 +378,49 @@ function writeOfflineHistory(entries){
   }
 }
 
+function readOnlineHistory(){
+  try{
+    const parsed=JSON.parse(localStorage.getItem(ONLINE_HISTORY_KEY)||'[]');
+    return Array.isArray(parsed)?parsed.slice(0,MAX_ONLINE_HISTORY):[];
+  }catch(error){
+    return [];
+  }
+}
+
+function writeOnlineHistory(entries){
+  try{
+    localStorage.setItem(ONLINE_HISTORY_KEY,JSON.stringify(entries.slice(0,MAX_ONLINE_HISTORY)));
+  }catch(error){
+    return;
+  }
+}
+
+function mergeHistoryEntries(...groups){
+  const merged=new Map();
+  groups.flat().forEach(item=>{
+    if(!item?.id)return;
+    const current=merged.get(item.id);
+    if(!current||new Date(item.date||0).getTime()>=new Date(current.date||0).getTime()){
+      merged.set(item.id,item);
+    }
+  });
+  return [...merged.values()]
+    .sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+}
+
+function saveOnlineHistoryEntry(entry){
+  if(!entry?.id)return entry;
+  const normalized={...entry,offline:false,result:entry.result?{...entry.result,id:String(entry.id),offline:false}:entry.result};
+  const saved=mergeHistoryEntries([normalized],readOnlineHistory()).slice(0,MAX_ONLINE_HISTORY);
+  writeOnlineHistory(saved);
+  historyCache=mergeHistoryEntries(saved,readOfflineHistory());
+  return normalized;
+}
+
+function readSavedHistoryItem(historyId){
+  return mergeHistoryEntries(readOnlineHistory(),readOfflineHistory()).find(item=>item.id===historyId)||null;
+}
+
 function saveOfflineHistory(message,result){
   const entry={
     id:`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -360,6 +433,8 @@ function saveOfflineHistory(message,result){
   return entry;
 }
 
+// Pull online history from the backend when possible, then merge it with
+// browser-kept entries so revisits still show previous results.
 async function loadHistory(){
   historyList.replaceChildren();
   const loading=document.createElement('p');
@@ -367,30 +442,29 @@ async function loadHistory(){
   loading.textContent='Đang tải lịch sử…';
   historyList.appendChild(loading);
   const offlineEntries=readOfflineHistory();
+  const onlineEntries=readOnlineHistory();
   if(isOffline){
-    historyCache=offlineEntries;
+    historyCache=mergeHistoryEntries(onlineEntries,offlineEntries);
     renderHistory();
     return;
   }
   try{
     const entries=await requestJson('/history/');
-    const onlineEntries=Array.isArray(entries)?entries.map(backendHistoryToItem):[];
-    historyCache=[...onlineEntries,...offlineEntries].sort(
-      (a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime()
-    );
+    const refreshedEntries=Array.isArray(entries)?entries.map(backendHistoryToItem):[];
+    const savedOnlineEntries=mergeHistoryEntries(refreshedEntries,onlineEntries).slice(0,MAX_ONLINE_HISTORY);
+    writeOnlineHistory(savedOnlineEntries);
+    historyCache=mergeHistoryEntries(savedOnlineEntries,offlineEntries);
     renderHistory();
   }catch(error){
-    historyCache=offlineEntries;
+    historyCache=mergeHistoryEntries(onlineEntries,offlineEntries);
     renderHistory();
-    if(!offlineEntries.length)historyList.firstChild.textContent='Không thể tải lịch sử lúc này.';
+    if(!onlineEntries.length&&!offlineEntries.length)historyList.firstChild.textContent='Không thể tải lịch sử lúc này.';
   }
 }
 
 async function showSavedHistoryResult(item){
   if(!item?.result)return;
-  window.location.hash='analyze';
-  switchView('analyze');
-  showResultFrame(item.message,item.result,{fromHistory:true});
+  openResultPage(item.id,{fromHistory:true});
 }
 
 function updateHistorySelectionUi(){
@@ -557,6 +631,9 @@ async function confirmDeleteSelectedHistory(){
     if(offlineIds.size){
       writeOfflineHistory(readOfflineHistory().filter(item=>!offlineIds.has(item.id)));
     }
+    if(onlineIds.length){
+      writeOnlineHistory(readOnlineHistory().filter(item=>!onlineIds.includes(item.id)));
+    }
     selectedHistoryIds.clear();
     deleteConfirmModal.classList.remove('open');
     deleteConfirmModal.setAttribute('aria-hidden','true');
@@ -572,6 +649,7 @@ async function confirmDeleteSelectedHistory(){
   }
 }
 
+// --- API adapter and online result preparation ----------------------------------
 function apiErrorMessage(statusCode,detail){
   if(statusCode===409)return 'Yêu cầu này vẫn đang được xử lý. Bác vui lòng thử lại sau ít phút.';
   if(statusCode===429)return 'Phiên này đã dùng hết lượt kiểm tra AI. Bác vui lòng xem lại các kết quả đã lưu.';
@@ -633,6 +711,8 @@ async function loadUsageCompat(){
   renderRemainingAnalyses();
 }
 
+// Convert the older backend shape into the richer payload that the current
+// frontend renderer expects, then cache it for history/result review.
 async function prepareOnlineResult(submittedText,analysisResult){
   const needsGuide=['medium','high'].includes(analysisResult?.risk_level);
   let entries=[];
@@ -640,7 +720,14 @@ async function prepareOnlineResult(submittedText,analysisResult){
     const history=await requestJson('/history/');
     entries=Array.isArray(history)?history:[];
   }catch(error){
-    return backendAnalysisToPayload(analysisResult,{guideUnavailable:needsGuide});
+    const fallback=backendAnalysisToPayload(analysisResult,{guideUnavailable:needsGuide});
+    return saveOnlineHistoryEntry({
+      id:String(fallback.id||`online-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      message:submittedText,
+      date:new Date().toISOString(),
+      result:fallback,
+      offline:false
+    }).result;
   }
 
   const entry=entries.find(item=>item?.message===submittedText)||entries[0];
@@ -665,15 +752,23 @@ async function prepareOnlineResult(submittedText,analysisResult){
     payload.id=String(entry.id||'');
     payload.date=String(entry.created_at||new Date().toISOString());
   }
-  return payload;
+  return saveOnlineHistoryEntry({
+    id:String(payload.id||entry?.id||`online-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    message:submittedText,
+    date:String(payload.date||entry?.created_at||new Date().toISOString()),
+    result:{...payload,responder_output:entry?.responder_output||payload.responder_output||null},
+    offline:false
+  }).result;
 }
 
+// --- Connectivity and service worker --------------------------------------------
 function applyUsage(aiUsage){
   const used=Number(aiUsage?.used||0);
   const limit=Number(aiUsage?.limit||0);
   sessionAtLimit=limit>0&&used>=limit;
   if(sessionAtLimit){
     remainingAnalyses=0;
+    saveRemainingAnalyses();
   }
   renderRemainingAnalyses();
 }
@@ -703,12 +798,24 @@ function setPracticeAnswersDisabled(disabled){
   practiceAnswerButtons.forEach(button=>{button.disabled=disabled});
 }
 
+// --- Practice page --------------------------------------------------------------
+function shuffledPracticePrompts(){
+  const prompts=[...practicePrompts];
+  for(let index=prompts.length-1;index>0;index-=1){
+    const swapIndex=Math.floor(Math.random()*(index+1));
+    [prompts[index],prompts[swapIndex]]=[prompts[swapIndex],prompts[index]];
+  }
+  return prompts;
+}
+
+let practiceQuestions=shuffledPracticePrompts();
+
 function renderPracticePrompt(){
-  const prompt=practicePrompts[practiceIndex];
+  const prompt=practiceQuestions[practiceIndex];
   practiceLocked=false;
   practiceContent.hidden=false;
   practiceMessage.textContent=prompt.text;
-  practiceProgress.textContent=`Câu ${practiceIndex+1}/${practicePrompts.length}`;
+  practiceProgress.textContent=`Câu ${practiceIndex+1}/${practiceQuestions.length}`;
   practiceScore.textContent=`Điểm ${practiceCorrect}/${practiceAnswered}`;
   practiceFeedback.hidden=true;
   practiceFeedback.textContent='';
@@ -722,7 +829,7 @@ function renderPracticePrompt(){
 
 function submitPracticeAnswer(answer,selectedButton){
   if(practiceLocked)return;
-  const prompt=practicePrompts[practiceIndex];
+  const prompt=practiceQuestions[practiceIndex];
   practiceLocked=true;
   setPracticeAnswersDisabled(true);
   practiceFeedback.hidden=true;
@@ -744,27 +851,60 @@ function submitPracticeAnswer(answer,selectedButton){
     :`Chưa đúng. Đáp án là ${answerLabel}. ${prompt.reason}`;
   practiceFeedback.className=`practice-feedback ${isCorrect?'correct':'incorrect'}`;
   practiceFeedback.hidden=false;
-  practiceNextButton.textContent=practiceIndex===practicePrompts.length-1
+  practiceNextButton.textContent=practiceIndex===practiceQuestions.length-1
     ?'Làm lại từ đầu'
     :'Câu tiếp theo →';
   practiceNextButton.hidden=false;
   practiceNextButton.focus();
 }
 
+// --- Analysis submission flow ---------------------------------------------------
 messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
-postAnalysisOptions.forEach(option=>option.addEventListener('click',()=>{
+async function generateResponder(choice,hotlines,bank=null){
+  try{
+    const output=await requestJson('/responder/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history_id:postAnalysisQuestion.dataset.analysisId,choice,hotlines,bank})});
+    if(!bank&&output.needs_bank&&askForBank(choice,hotlines))return;
+    bankQuestion.hidden=true;
+    const historyId=String(postAnalysisQuestion.dataset.analysisId||'');
+    if(historyId){
+      const saved=readSavedHistoryItem(historyId);
+      if(saved?.result){
+        saveOnlineHistoryEntry({...saved,result:{...saved.result,responder_output:output}});
+      }
+    }
+    renderResponderGuidance(output.steps);
+  }catch(error){showFeedback('Chưa thể tải các bước ứng cứu. Bác hãy thử lại sau.');}
+}
+
+function askForBank(choice,hotlines){
+  const banks=Object.entries(hotlines).filter(([name])=>name!=='Công an');
+  if(banks.length===0)return false;
+  bankOptions.replaceChildren(...banks.map(([name,number])=>{
+    const button=document.createElement('button');
+    button.className='post-analysis-option';
+    button.type='button';
+    button.textContent=name;
+    button.addEventListener('click',async()=>{
+      bankOptions.querySelectorAll('button').forEach(item=>{item.disabled=true});
+      await generateResponder(choice,{[name]:number},name);
+    });
+    return button;
+  }));
+  bankQuestion.hidden=false;
+  revealResultMessage(bankQuestion);
+  return true;
+}
+
+postAnalysisOptions.forEach(option=>option.addEventListener('click',async()=>{
   if(option.disabled)return;
   postAnalysisOptions.forEach(item=>{
     item.disabled=true;
     item.classList.toggle('selected',item===option);
     item.setAttribute('aria-pressed',String(item===option));
   });
-  renderResponderGuidance(
-    option.dataset.postAnalysisChoice,
-    postAnalysisQuestion.dataset.riskLevel
-  );
+  await generateResponder(option.dataset.postAnalysisChoice,await loadTelephones());
 }));
 downloadResultImageButton.addEventListener('click',async()=>{
   downloadResultImageButton.disabled=true;
@@ -827,10 +967,11 @@ practiceAnswerButtons.forEach(button=>button.addEventListener('click',()=>{
   submitPracticeAnswer(button.dataset.answer,button);
 }));
 practiceNextButton.addEventListener('click',()=>{
-  if(practiceIndex===practicePrompts.length-1){
+  if(practiceIndex===practiceQuestions.length-1){
     practiceIndex=0;
     practiceCorrect=0;
     practiceAnswered=0;
+    practiceQuestions=shuffledPracticePrompts();
   }else{
     practiceIndex+=1;
   }
@@ -863,6 +1004,8 @@ function pendingAnalysisFor(message){
   return pending;
 }
 
+// Central check flow: choose offline or online analysis, save the result,
+// then open the result page.
 async function runAnalysis(submittedText){
   if(isAnalyzing)return;
   isAnalyzing=true;
@@ -872,10 +1015,9 @@ async function runAnalysis(submittedText){
 
   try{
     let payload;
-    let resultShown=false;
     if(isOffline){
       payload=ScamCheckOffline.analyze(submittedText);
-      saveOfflineHistory(submittedText,payload);
+      payload.id=saveOfflineHistory(submittedText,payload).id;
     }else{
       try{
         const pending=pendingAnalysisFor(submittedText);
@@ -883,13 +1025,7 @@ async function runAnalysis(submittedText){
           method:'POST',
           headers:{
             'Content-Type':'application/json',
-            'X-ScamCheck-Request-ID':pending.requestId,
-            'X-ScamCheck-Page-Session':PAGE_ANALYSIS_SESSION_ID
-          },
-          onAnalysisResult:initialPayload=>{
-            resultShown=true;
-            connectivityStatus.hidden=true;
-            showResultFrame(submittedText,initialPayload);
+            'X-ScamCheck-Request-ID':pending.requestId
           },
           body:JSON.stringify({text:submittedText,source:'web'})
         });
@@ -914,8 +1050,7 @@ async function runAnalysis(submittedText){
       }
     }
     connectivityStatus.hidden=true;
-    if(resultShown)completeResultFrame(submittedText,payload);
-    else showResultFrame(submittedText,payload);
+    openResultPage(payload.id);
   }catch(error){
     hideProcessingFrame();
     inputFrame.style.display='block';
@@ -926,6 +1061,7 @@ async function runAnalysis(submittedText){
       if(error.status===429){
         sessionAtLimit=true;
         remainingAnalyses=0;
+        saveRemainingAnalyses();
         renderRemainingAnalyses();
       }
       if(navigator.onLine)connectivityStatus.hidden=true;
@@ -940,6 +1076,7 @@ async function runAnalysis(submittedText){
   }
 }
 
+// --- Scam library and hotline browser -------------------------------------------
 function createLibraryIcon(group,className=''){
   const details=scamGroupDetails[group]||scamGroupDetails.fake_bank;
   const wrapper=document.createElement('span');
@@ -1045,11 +1182,22 @@ async function loadScamTypes({force=false}={}){
 }
 
 function showLibraryList(){
+  void loadTelephones();
   libraryDetailFrame.hidden=true;
   libraryListFrame.hidden=false;
   void loadScamTypes().then(()=>{
     requestAnimationFrame(()=>window.scrollTo({top:libraryScrollPosition,behavior:'auto'}));
   });
+}
+
+async function loadTelephones(){
+  const grid=byId('hotline-grid');
+  if(telephoneCatalog)return telephoneCatalog;
+  grid.replaceChildren();
+  try{telephoneCatalog=await requestJson('/telephones');grid.replaceChildren(...Object.entries(telephoneCatalog).map(([name,number])=>{
+    const card=document.createElement('article'),title=document.createElement('h3'),link=document.createElement('a');
+    card.className='hotline-card';title.textContent=name;link.href=`tel:${number}`;link.textContent=number;link.setAttribute('aria-label',`Gọi tổng đài ${name}: ${number}`);card.append(title,link);return card;
+  }));return telephoneCatalog;}catch(error){grid.textContent='Chưa tải được danh sách tổng đài.';return {};}
 }
 
 async function showLibraryDetail(detailId){
@@ -1088,10 +1236,27 @@ function syncLibraryRoute(){
   else showLibraryList();
 }
 
+// --- Route syncing and global event wiring --------------------------------------
+async function showResultRoute(resultId){
+  try{
+    const savedItem=readSavedHistoryItem(resultId);
+    const item=savedItem||backendHistoryToItem(await requestJson(`/history/${encodeURIComponent(resultId)}`));
+    if(!item?.result)throw new Error('Saved result not found');
+    const route=routeFromHash();
+    if(route.view!=='result'||route.resultId!==resultId)return;
+    showResultFrame(item.message,item.result,{fromHistory:resultFromHistoryId===resultId});
+    resultFromHistoryId=null;
+  }catch(error){
+    if(routeFromHash().view==='result')window.location.hash='history';
+  }
+}
+
 function syncRoute({focus=false}={}){
   const route=routeFromHash();
+  if(route.view==='analyze'&&resultFrame.classList.contains('active'))showComposerFrame();
   switchView(route.view,{focus});
   if(route.view==='library')syncLibraryRoute();
+  if(route.view==='result'&&route.resultId)void showResultRoute(route.resultId);
 }
 
 checkButton.addEventListener('click',async()=>{
@@ -1142,4 +1307,4 @@ window.addEventListener('online',updateConnectivityState);
 window.addEventListener('offline',updateConnectivityState);
 window.addEventListener('hashchange',()=>syncRoute({focus:true}));
 if(!window.location.hash)window.history.replaceState(null,'','#analyze');
-resetRemainingAnalysesOnReload();restoreDraft();setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();syncRoute();
+restoreRemainingAnalyses();restoreDraft();setupSpeechRecognition();renderPracticePrompt();registerServiceWorker();updateConnectivityState();syncRoute();

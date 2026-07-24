@@ -127,7 +127,7 @@ scroll pauses follow mode and exposes a down-arrow control that resumes it. The 
 `/session/ai-calls` to display authoritative
 `used`/`limit` usage and disables submission after the session reaches its ceiling.
 Detective, Cô tâm lý, and Người ứng cứu rows are genuinely unhidden one at a time at
-one-second intervals rather than rendering a complete block with only delayed styling.
+half-second intervals rather than rendering a complete block with only delayed styling.
 Cô tâm lý emoji are selected from each sentence's meaning. Detective evidence omits
 repetitive discovery boilerplate, labels excerpts as “Dấu hiệu”, and gives the final
 three-action bubble stronger visual emphasis.
@@ -135,7 +135,7 @@ After Cô tâm lý finishes for a `suspicious` or `dangerous` result, the browse
 of four exposure states applies: no action, opened a link, shared information, or sent
 money. The first choice locks the group and reveals the frontend-only Người ứng cứu with
 an authored, risk-aware numbered action list. Each step is a separate avatar bubble,
-revealed at one-second intervals unless reduced motion is enabled. This guidance is not
+revealed at half-second intervals unless reduced motion is enabled. This guidance is not
 sent to an API, does not consume quota, and is not persisted.
 
 The browser switches from the composer to a dedicated processing frame while a check is in

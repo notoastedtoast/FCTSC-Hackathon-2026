@@ -124,7 +124,9 @@
           <p>ScamCheck đang đối chiếu ngữ cảnh, dấu hiệu gây áp lực và yêu cầu nhạy cảm.</p>
         </div>
       </section>
+    </main>
 
+    <main id="result-view" class="page-view" data-view-panel="result" tabindex="-1" hidden>
       <section id="result-frame" class="result-frame" aria-live="polite">
         <header class="result-header">
           <div><p id="result-context-label" class="eyebrow">Phân tích hoàn tất</p><h1>Kết quả kiểm tra</h1></div>
@@ -172,6 +174,12 @@
                 <button class="post-analysis-option" type="button" data-post-analysis-choice="sent-money" aria-pressed="false">Đã chuyển tiền</button>
               </div>
             </section>
+            <section id="bank-question" class="post-analysis-question" aria-labelledby="bank-question-title" hidden>
+              <p class="post-analysis-kicker">Thông tin cần thêm</p>
+              <h3 id="bank-question-title">Bác đang dùng ngân hàng nào?</h3>
+              <p class="post-analysis-hint">Chọn ngân hàng để Người ứng cứu đưa bước liên hệ phù hợp.</p>
+              <div id="bank-options" class="post-analysis-options" role="group" aria-labelledby="bank-question-title"></div>
+            </section>
           </div>
           <section id="responder-block" class="responder-block" aria-labelledby="responder-title" aria-live="polite" hidden>
             <div class="responder-profile">
@@ -208,10 +216,6 @@
     <main id="library-view" class="page-view library-view" data-view-panel="library" tabindex="-1" hidden>
       <section id="library-list-frame">
         <header class="library-page-header">
-          <a class="library-back-link" href="#analyze" aria-label="Quay lại màn hình kiểm tra">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m15.4 5.4-1.4-1.4-8 8 8 8 1.4-1.4L8.8 12l6.6-6.6Z"/></svg>
-            <span>Quay lại</span>
-          </a>
           <div class="library-heading-copy">
             <p class="eyebrow">Nhận biết để phòng tránh</p>
             <h1>Thư viện các kiểu lừa đảo</h1>
@@ -255,14 +259,14 @@
             <div><p class="eyebrow">Kênh liên hệ đáng tin cậy</p><h2 id="hotline-library-title">Tổng đài chính thức</h2><p>Lưu lại để xác minh nhanh khi nhận cuộc gọi hoặc tin nhắn đáng ngờ.</p></div>
             <span class="hotline-verified-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m9.55 17.6-5.1-5.1 1.4-1.4 3.7 3.7 8.6-8.6 1.4 1.4-10 10Z"/></svg>Số chính thức</span>
           </header>
-          <div class="hotline-grid">
+          <div id="hotline-grid" class="hotline-grid">
             <article class="hotline-card hotline-card-government">
               <div class="hotline-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2 3 7v2h18V7l-9-5ZM5 11v7H3v2h18v-2h-2v-7h-2v7h-4v-7h-2v7H7v-7H5Z"/></svg></div>
-              <div class="hotline-card-body"><div class="hotline-meta"><span class="hotline-type">Cơ quan Nhà nước</span><span class="hotline-card-verified">✓ Đã xác thực</span></div><h3>Cục An toàn thông tin (Bộ TT&amp;TT)</h3><p>Tiếp nhận phản ánh cuộc gọi rác, tin nhắn rác và hỗ trợ xử lý sự cố lừa đảo trực tuyến trên toàn quốc.</p><a href="tel:18006096" aria-label="Gọi Cục An toàn thông tin 1800 6096"><span>1800 6096</span><small>Gọi ngay</small></a></div>
+              <div class="hotline-card-body"><div class="hotline-meta"><span class="hotline-type">Cơ quan Nhà nước</span><span class="hotline-card-verified">✓ Đã xác thực</span></div><h3>Đầu số 156 phản ánh cuộc gọi, tin nhắn rác</h3><p>Kênh tiếp nhận chính thức do Cục An toàn thông tin triển khai để phản ánh cuộc gọi rác, tin nhắn rác và cuộc gọi có dấu hiệu lừa đảo.</p><a href="tel:156" aria-label="Gọi đầu số 156 phản ánh cuộc gọi, tin nhắn rác"><span>156</span><small>Gọi ngay</small></a></div>
             </article>
             <article class="hotline-card hotline-card-emergency">
               <div class="hotline-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2 4 5.5V11c0 5.05 3.4 9.74 8 11 4.6-1.26 8-5.95 8-11V5.5L12 2Zm0 2.18 6 2.62V11c0 3.86-2.45 7.67-6 8.91C8.45 18.67 6 14.86 6 11V6.8l6-2.62Z"/></svg></div>
-              <div class="hotline-card-body"><div class="hotline-meta"><span class="hotline-type">Công an</span><span class="hotline-card-verified">✓ Đã xác thực</span></div><h3>Đường dây nóng Bộ Công An</h3><p>Tổng đài khẩn cấp 24/7 tiếp nhận thông tin tố giác tội phạm hình sự và lừa đảo chiếm đoạt tài sản.</p><a href="tel:113" aria-label="Gọi đường dây nóng Bộ Công An 113"><span>113</span><small>Gọi ngay</small></a></div>
+              <div class="hotline-card-body"><div class="hotline-meta"><span class="hotline-type">Công an</span><span class="hotline-card-verified">✓ Đã xác thực</span></div><h3>Cảnh sát 113</h3><p>Số khẩn cấp của lực lượng Công an để tiếp nhận tin báo an ninh, trật tự và tình huống nguy cấp cần hỗ trợ ngay.</p><a href="tel:113" aria-label="Gọi Cảnh sát 113"><span>113</span><small>Gọi ngay</small></a></div>
             </article>
             <article class="hotline-card hotline-card-emergency">
               <div class="hotline-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2 4 5.5V11c0 5.05 3.4 9.74 8 11 4.6-1.26 8-5.95 8-11V5.5L12 2Zm0 2.18 6 2.62V11c0 3.86-2.45 7.67-6 8.91C8.45 18.67 6 14.86 6 11V6.8l6-2.62Z"/></svg></div>
@@ -332,8 +336,8 @@
 
     <main id="history-view" class="page-view" data-view-panel="history" tabindex="-1" hidden>
       <header class="page-heading page-heading-row">
-        <div><p class="eyebrow">Lưu theo phiên</p><h1>Lịch sử kiểm tra</h1><p>Kết quả trực tuyến được lưu cho phiên hiện tại; kết quả ngoại tuyến chỉ được giữ trên thiết bị này.</p></div>
-        <span class="local-badge">Phiên hiện tại</span>
+        <div><p class="eyebrow">Lưu trên thiết bị</p><h1>Lịch sử kiểm tra</h1><p>Kết quả đã xem sẽ được giữ lại trên trình duyệt này để bác mở lại ở lần truy cập sau.</p></div>
+        <span class="local-badge">Trình duyệt này</span>
       </header>
 
       <section class="history-card" aria-labelledby="history-title">

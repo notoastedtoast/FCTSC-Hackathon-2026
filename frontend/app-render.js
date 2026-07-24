@@ -1,5 +1,6 @@
 /* ScamCheck browser rendering helpers.
    This file only handles presentation and result rendering. */
+// --- Risk labels and descriptions shown in the result header ---------------------
 const riskPresentations={
   safe:{
     className:'safe',
@@ -18,6 +19,7 @@ const riskPresentations={
   }
 };
 
+// --- QR code generator used by the share-image feature ---------------------------
 function qrAppendBits(value,length,bits){
   for(let shift=length-1;shift>=0;shift--)bits.push((value>>>shift)&1);
 }
@@ -57,13 +59,14 @@ function qrReedSolomonRemainder(data,divisor){
   return result;
 }
 
-function createProductQrMatrix(){
-  // Version 3-L is large enough for the fixed 40-byte product URL.
-  const version=3,size=version*4+17,dataCodewords=55,errorCodewords=15;
+function createQrMatrix(value=SHARE_PRODUCT_URL){
+  // Version 5-L accommodates a public result URL with its 36-character UUID.
+  const version=5,size=version*4+17,dataCodewords=108,errorCodewords=26;
+  if(value.length>106)throw new Error('QR value is too long');
   const bits=[];
   qrAppendBits(0x4,4,bits);
-  qrAppendBits(SHARE_PRODUCT_URL.length,8,bits);
-  Array.from(SHARE_PRODUCT_URL).forEach(character=>qrAppendBits(character.charCodeAt(0),8,bits));
+  qrAppendBits(value.length,8,bits);
+  Array.from(value).forEach(character=>qrAppendBits(character.charCodeAt(0),8,bits));
   const capacity=dataCodewords*8;
   qrAppendBits(0,Math.min(4,capacity-bits.length),bits);
   while(bits.length%8!==0)bits.push(0);
@@ -98,11 +101,9 @@ function createProductQrMatrix(){
       }
     }
   });
-  for(let deltaY=-2;deltaY<=2;deltaY++){
-    for(let deltaX=-2;deltaX<=2;deltaX++){
-      const distance=Math.max(Math.abs(deltaX),Math.abs(deltaY));
-      setFunction(22+deltaX,22+deltaY,distance!==1);
-    }
+  for(let deltaY=-2;deltaY<=2;deltaY++)for(let deltaX=-2;deltaX<=2;deltaX++){
+    const distance=Math.max(Math.abs(deltaX),Math.abs(deltaY));
+    setFunction(30+deltaX,30+deltaY,distance!==1);
   }
   const formatData=(1<<3)|0;
   let formatRemainder=formatData;
@@ -141,6 +142,7 @@ function createProductQrMatrix(){
   return modules;
 }
 
+// --- Canvas drawing helpers -----------------------------------------------------
 function drawRoundedRectangle(context,x,y,width,height,radius,fill,stroke=null,lineWidth=1){
   const safeRadius=Math.min(radius,width/2,height/2);
   context.beginPath();
@@ -219,6 +221,7 @@ function drawPreparedCanvasLines(context,lines,x,y,lineHeight){
   lines.forEach((line,index)=>context.fillText(line,x,y+index*lineHeight));
 }
 
+// --- Share-image asset loading and summary shaping -------------------------------
 function drawCanvasLines(context,value,x,y,maxWidth,lineHeight,maxLines){
   const lines=fitCanvasLines(context,value,maxWidth,maxLines);
   drawPreparedCanvasLines(context,lines,x,y,lineHeight);
@@ -274,8 +277,8 @@ function drawShareAvatar(context,image,x,y,size){
   context.stroke();
 }
 
-function drawProductQr(context,x,y,pixelSize){
-  const matrix=createProductQrMatrix();
+function drawQr(context,x,y,pixelSize,value){
+  const matrix=createQrMatrix(value);
   const quietZone=4;
   const moduleSize=Math.floor(pixelSize/(matrix.length+quietZone*2));
   const qrSize=moduleSize*(matrix.length+quietZone*2);
@@ -296,6 +299,12 @@ function drawProductQr(context,x,y,pixelSize){
       }
     });
   });
+}
+
+function resultShareUrl(id){
+  return /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(id||''))
+    ?new URL(`#result/${id}`,SHARE_PRODUCT_URL).href
+    :SHARE_PRODUCT_URL;
 }
 
 function resultShareSummary(originalText,payload){
@@ -349,10 +358,13 @@ function resultShareSummary(originalText,payload){
     signs:uniqueSigns,
     actions:defaultActions.map((fallback,index)=>
       normalizeShareText(detective.actions?.[index]||fallback)
-    )
+    ),
+    resultUrl:resultShareUrl(payload?.id)
   };
 }
 
+// Build the exported summary image shown when the user taps
+// "Tải kết quả dạng ảnh".
 async function createResultShareCanvas(summary){
   await waitForShareCanvasFonts();
   const canvas=document.createElement('canvas');
@@ -552,14 +564,14 @@ async function createResultShareCanvas(summary){
   setShareCanvasFont(context,500,22);
   drawCanvasLines(
     context,
-    'Quét mã ở góc để mở ScamCheck.',
+    'Quét mã ở góc để mở kết quả này.',
     92,footerTop+101,600,30,2
   );
   context.fillStyle='#ffffff';
   setShareCanvasFont(context,700,20);
   context.fillText('fctsc-hackathon-2026.vercel.app',92,footerTop+145);
   drawRoundedRectangle(context,846,footerTop+17,154,154,13,'#ffffff');
-  drawProductQr(context,850,footerTop+21,146);
+  drawQr(context,850,footerTop+21,146,summary.resultUrl);
 
   context.fillStyle='#526a80';
   setShareCanvasFont(context,600,18);
@@ -572,13 +584,14 @@ async function createResultShareCanvas(summary){
   return canvas;
 }
 
-function createCaptureQrCanvas(){
+// --- DOM capture helpers for result export --------------------------------------
+function createCaptureQrCanvas(value){
   const canvas=document.createElement('canvas');
   canvas.width=90;
   canvas.height=90;
   const context=canvas.getContext('2d');
   if(!context)throw new Error('Canvas is unavailable');
-  drawProductQr(context,0,0,90);
+  drawQr(context,0,0,90,value);
   return canvas;
 }
 
@@ -642,7 +655,7 @@ function createDetectiveCaptureNode(){
   logo.src='/scamcheck-logo.png';
   logo.alt='';
   logo.width=145;
-  const qr=createCaptureQrCanvas();
+  const qr=createCaptureQrCanvas(currentShareSummary?.resultUrl);
   qr.setAttribute('aria-hidden','true');
   footer.append(logo,qr);
   shell.append(detective,footer);
@@ -750,6 +763,7 @@ async function saveCurrentResultImage(){
   return isAppleMobile?'preview':'downloaded';
 }
 
+// --- Safe text rendering for result messages ------------------------------------
 function appendHighlightedText(container,text,quotes){
   container.replaceChildren();
   const ranges=[];
@@ -788,6 +802,7 @@ function appendHighlightedText(container,text,quotes){
   if(merged.length===0)container.textContent=text;
 }
 
+// --- Detective / Psychology / Responder result blocks ----------------------------
 function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=null){
   const messageOrder=signalList.childElementCount;
   const row=document.createElement('div');
@@ -865,29 +880,18 @@ function revealPostAnalysisQuestion(){
 }
 
 function revealPsychologyMessages(){
-  if(!detectiveSequenceComplete||!psychologyReady||psychologyMessage.childElementCount===0)return;
-  psychologyReady=false;
+  if(!psychologyMessage.childElementCount)return;
   actionSection.hidden=false;
   psychologyBlock.hidden=false;
-  revealRowsSequentially(
-    psychologyMessage.querySelectorAll('.psychology-message-row'),
-    {onComplete:revealPostAnalysisQuestion}
-  );
+  revealRows(psychologyMessage.querySelectorAll('.psychology-message-row'));
+  revealPostAnalysisQuestion();
 }
 
-function playMessageSequence(){
-  clearMessageRevealTimers();
-  detectiveSequenceComplete=false;
-  psychologyReady=psychologyMessage.childElementCount>0;
-  revealRowsSequentially(
-    signalList.querySelectorAll('.detective-message-row'),
-    {onComplete:()=>{
-      detectiveSequenceComplete=true;
-      downloadResultImageButton.disabled=false;
-      resultImageStatus.textContent='';
-      revealPsychologyMessages();
-    }}
-  );
+function renderResultBlocks(){
+  revealRows(signalList.querySelectorAll('.detective-message-row'));
+  downloadResultImageButton.disabled=false;
+  resultImageStatus.textContent='';
+  revealPsychologyMessages();
 }
 
 const deterministicRuleLabels={
@@ -1042,7 +1046,10 @@ function renderPsychology(payload){
   const shouldShow=riskLevel==='suspicious'||riskLevel==='dangerous';
   psychologyMessage.replaceChildren();
   postAnalysisQuestion.hidden=true;
-  postAnalysisQuestion.dataset.eligible=String(shouldShow);
+  bankQuestion.hidden=true;
+  bankOptions.replaceChildren();
+  postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id));
+  postAnalysisQuestion.dataset.analysisId=String(payload.id||'');
   postAnalysisQuestion.dataset.riskLevel=riskLevel||'suspicious';
   responderBlock.hidden=true;
   responderSteps.replaceChildren();
@@ -1067,9 +1074,7 @@ function renderPsychology(payload){
   splitPsychologyMessage(message).forEach(appendPsychologyMessage);
 }
 
-function renderResponderGuidance(choice,riskLevel){
-  const normalizedRisk=riskLevel==='dangerous'?'dangerous':'suspicious';
-  const steps=rescuePlans[choice]?.[normalizedRisk]||rescuePlans.none[normalizedRisk];
+function renderResponderGuidance(steps){
   const items=steps.map(step=>{
     const row=document.createElement('li');
     row.className='responder-message-row';
@@ -1090,21 +1095,16 @@ function renderResponderGuidance(choice,riskLevel){
   });
   responderSteps.replaceChildren(...items);
   responderBlock.hidden=false;
-  revealRowsSequentially(items);
+  revealRows(items);
 }
 
-function completeResultFrame(text,payload){
-  renderPsychology(payload);
-  currentShareSummary=resultShareSummary(text,payload);
-  psychologyReady=psychologyMessage.childElementCount>0;
-  revealPsychologyMessages();
-}
-
+// Main renderer for the result page after online or offline analysis finishes.
 function showResultFrame(text,payload,{fromHistory=false}={}){
   const detective=payload.detective;
   const risk=riskPresentations[detective.risk_level]||riskPresentations.suspicious;
 
   resultContextLabel.textContent=fromHistory?'Kết quả đã lưu':'Phân tích hoàn tất';
+  postAnalysisQuestion.dataset.message=text;
   historyReturnButton.hidden=!fromHistory;
 
   riskCard.className=`risk-card ${risk.className}`;
@@ -1117,6 +1117,9 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
 
   renderSignals(detective,payload.deterministic_findings,text);
   renderPsychology(payload);
+  if(Array.isArray(payload.responder_output?.steps)&&!payload.responder_output.needs_bank){
+    renderResponderGuidance(payload.responder_output.steps);
+  }
   currentShareSummary=resultShareSummary(text,payload);
   void Promise.all([loadShareLogo(),loadShareDetectiveAvatar()]);
   downloadResultImageButton.disabled=true;
@@ -1127,5 +1130,5 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
   resultFrame.classList.add('active');
   resetResultAutoFollow();
   window.scrollTo({top:0,behavior:'smooth'});
-  playMessageSequence();
+  renderResultBlocks();
 }
