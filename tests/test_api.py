@@ -192,7 +192,7 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         response = await self.client.get("/telephones")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["Vietcombank"], "1900545413")
-        self.assertEqual(response.json()["Phản ánh tin nhắn/cuộc gọi rác"], "156")
+        self.assertEqual(response.json()["Phản ánh tin nhắn/cuộc gọi rác, lừa đảo"], "156")
 
     async def test_responder_accepts_no_bank_selection(self) -> None:
         analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})
@@ -217,12 +217,12 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
             json={
                 "history_id": self.history_id,
                 "choice": "opened-link",
-                "hotlines": {"Phản ánh tin nhắn/cuộc gọi rác": "156"},
+                "hotlines": {"Phản ánh tin nhắn/cuộc gọi rác, lừa đảo": "156"},
             },
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('"Phản ánh tin nhắn/cuộc gọi rác": "156"', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertIn('"Phản ánh tin nhắn/cuộc gọi rác, lừa đảo": "156"', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
 
     async def test_responder_rejects_unknown_output_phone(self) -> None:
         analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})

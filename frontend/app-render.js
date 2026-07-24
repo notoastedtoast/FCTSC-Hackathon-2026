@@ -671,13 +671,13 @@ async function createDetectiveDomCaptureCanvas(){
     ));
     return await window.html2canvas(capture,{
       backgroundColor:'#edf3f8',
-      scale:3,
+      scale:2,
       useCORS:true,
       allowTaint:false,
       logging:false,
       width:capture.offsetWidth,
       height:capture.scrollHeight,
-      windowWidth:390,
+      windowWidth:680,
       windowHeight:capture.scrollHeight,
       scrollX:0,
       scrollY:0

@@ -958,7 +958,7 @@ function askForBank(choice,hotlines){
   noBankButton.addEventListener('click',async()=>{
     bankOptions.querySelectorAll('button').forEach(item=>{item.disabled=true});
     const reportingHotlines=Object.fromEntries(Object.entries(hotlines).filter(([name])=>
-      name==='Công an'||name==='Phản ánh tin nhắn/cuộc gọi rác'
+      name==='Công an'||name==='Phản ánh tin nhắn/cuộc gọi rác, lừa đảo'
     ));
     await generateResponder(choice,reportingHotlines,null,true);
   });
