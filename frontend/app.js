@@ -938,7 +938,7 @@ async function generateResponder(choice,hotlines,bank=null,noBank=false){
 
 function askForBank(choice,hotlines){
   const banks=Object.entries(hotlines).filter(([name])=>
-    name!=='Công an'&&name!=='Phản ánh tin nhắn/cuộc gọi rác'
+    name!=='Công an'&&name!=='Phản ánh tin nhắn/cuộc gọi rác, lừa đảo'
   );
   const buttons=banks.map(([name,number])=>{
     const button=document.createElement('button');
