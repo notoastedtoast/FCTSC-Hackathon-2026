@@ -634,7 +634,20 @@ function createDetectiveCaptureNode(){
       plainMessage.classList.remove('highlighted');
     }
     if(plainNote)plainNote.remove();
-    originalMessage.textContent=originalText;
+    const highlightedExcerpts=[...originalMessage.querySelectorAll('mark')]
+      .map(mark=>mark.textContent.trim())
+      .filter((excerpt,index,all)=>excerpt&&all.indexOf(excerpt)===index);
+    if(highlightedExcerpts.length){
+      const excerptNodes=highlightedExcerpts.map(excerpt=>{
+        const node=document.createElement('span');
+        node.className='capture-highlighted-excerpt';
+        node.textContent=excerpt;
+        return node;
+      });
+      originalMessage.replaceChildren(...excerptNodes);
+    }else{
+      originalMessage.textContent=originalText;
+    }
     originalMessage.classList.add('capture-highlighted-message');
     const highlightedTitle=original.querySelector('h3');
     if(highlightedTitle)highlightedTitle.textContent='Phần tin nhắn cần chú ý';
