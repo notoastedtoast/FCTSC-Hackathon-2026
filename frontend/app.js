@@ -371,10 +371,19 @@ function backendHistoryToItem(entry){
   return {
     id:String(entry?.id||''),
     message:String(entry?.message||''),
-    date:String(entry?.created_at||''),
+    date:normalizeHistoryTimestamp(entry?.created_at),
     result,
     offline:false
   };
+}
+
+// Backend history rows arrive as UTC strings without an explicit offset.
+function normalizeHistoryTimestamp(value){
+  const raw=String(value||'').trim();
+  if(!raw)return '';
+  if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(raw))return `${raw.replace(' ','T')}Z`;
+  if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(raw))return `${raw}Z`;
+  return raw;
 }
 
 function readOfflineHistory(){
