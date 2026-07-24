@@ -36,6 +36,14 @@ const ScamCheckOffline=(()=>{
     return prompt?.[0]||null;
   }
 
+  // Catch direct payment requests with amounts even when accents are missing.
+  function findMoneyRequest(text){
+    const folded=foldText(text);
+    if(/\b(?:da|vua)\s+chuyen\b/iu.test(folded))return null;
+    const match=folded.match(/(?:hay|vui\s+long|xin\s+hay|can|phai).{0,24}chuyen.{0,24}(?:\d[\d.\s]{2,}|k|nghin|trieu|usd|usdt|vnd|dong)|chuyen.{0,20}(?:\d[\d.\s]{2,}|k|nghin|trieu|usd|usdt|vnd|dong).{0,20}(?:de|cho|ngay)/iu);
+    return match?text.slice(match.index,match.index+match[0].length):null;
+  }
+
   const RULES=[
     {
       label:'Yêu cầu mã xác thực hoặc thông tin đăng nhập',
@@ -74,6 +82,11 @@ const ScamCheckOffline=(()=>{
       label:'Đường dẫn cần được xác minh độc lập',
       weight:2,
       find:findUntrustedUrl
+    },
+    {
+      label:'Yêu cầu chuyển tiền trực tiếp',
+      weight:3,
+      find:findMoneyRequest
     },
     {
       label:'Mạo danh tổ chức hoặc người có thẩm quyền',
@@ -122,7 +135,8 @@ const ScamCheckOffline=(()=>{
     {
       label:'Câu chữ cố điều khiển hoặc vô hiệu hóa hệ thống phân tích',
       weight:2,
-      pattern:/(?:bỏ\s+qua\s+(?:mọi\s+)?hướng\s+dẫn|hãy\s+nói\s+tin\s+này\s+an\s+toàn|ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions)/iu
+      pattern:/(?:bỏ\s+qua\s+(?:mọi\s+)?hướng\s+dẫn|bỏ\s+qua\s+tin\s+nhắn\s+này|đánh\s+dấu\s+là\s+an\s+toàn|hãy\s+nói\s+tin\s+này\s+an\s+toàn|ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions)/iu,
+      foldedPattern:/(?:bo\s+qua\s+(?:moi\s+)?huong\s+dan|bo\s+qua\s+tin\s+nhan\s+nay|danh\s+dau\s+la\s+an\s+toan|hay\s+noi\s+tin\s+nay\s+an\s+toan|ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions)/iu
     },
     {
       label:'Yêu cầu cung cấp dữ liệu tài chính hoặc định danh',
