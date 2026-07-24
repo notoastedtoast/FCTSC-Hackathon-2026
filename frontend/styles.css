@@ -119,8 +119,8 @@ a{color:inherit}
 .usage{color:var(--navy);font-size:.88rem;font-weight:720}
 .usage-badge{flex:0 0 auto;padding:10px 14px;color:var(--blue-dark);background:var(--blue-pale);border:1px solid #bed9f3;border-radius:16px;font-size:.92rem;font-weight:850;line-height:1.3;text-align:center;white-space:nowrap}
 .voice-status{min-height:18px;margin:7px 2px 0;color:var(--muted);font-size:.78rem}
-.sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;align-items:stretch}
-.sample-button{min-width:0;min-height:44px;height:100%;padding:8px 6px;border:1px solid;border-radius:10px;font-size:.76rem;font-weight:800;line-height:1.25;cursor:pointer;box-shadow:0 2px 7px rgba(26,61,95,.05);transition:transform .12s ease,box-shadow .16s ease,filter .16s ease}
+.sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:stretch}
+.sample-button{min-width:0;min-height:58px;height:100%;padding:12px 10px;border:1px solid;border-radius:12px;font-size:.84rem;font-weight:800;line-height:1.3;cursor:pointer;box-shadow:0 2px 7px rgba(26,61,95,.05);transition:transform .12s ease,box-shadow .16s ease,filter .16s ease}
 .sample-button[data-sample="bank"]{color:#0d56a4;background:#eaf4ff;border-color:#9fc7ea}
 .sample-button[data-sample="delivery"]{color:#875300;background:#fff4d6;border-color:#e5c36e}
 .sample-button[data-sample="prize"]{color:#694087;background:#f3ebf9;border-color:#cdb4dd}
@@ -479,8 +479,8 @@ html[data-high-contrast] input:focus-visible{outline-color:#ffbf00;outline-width
   .composer-card>.tool-card{margin-top:14px;padding:14px;box-shadow:none}
   .composer-card>.sample-card{margin-top:10px}
   .composer-card>.primary-button+.sample-card{margin-top:14px}
-  .sample-grid{gap:6px}
-  .sample-button{padding:8px 5px;font-size:.72rem}
+  .sample-grid{gap:8px}
+  .sample-button{min-height:52px;padding:10px 8px;font-size:.78rem}
   .result-header{align-items:flex-start}
   .history-return-button{font-size:.78rem}
   .risk-card{grid-template-columns:36px 1fr;padding:16px}
