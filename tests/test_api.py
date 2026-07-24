@@ -20,14 +20,16 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.database = AsyncMock(spec=HistoryDatabase)
         self.database.save_analysis.return_value = self.history_id
 
-        self._original_database = main.database
         self._original_overrides = main.app.dependency_overrides.copy()
-        main.database = self.database
 
         async def get_mock_client():
             return self.gemini
 
+        async def get_mock_database():
+            return self.database
+
         main.app.dependency_overrides[main.get_client] = get_mock_client
+        main.app.dependency_overrides[main.get_database] = get_mock_database
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=main.app),
             base_url="http://test",
@@ -36,7 +38,6 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.client.aclose()
         await self.gemini.close()
-        main.database = self._original_database
         main.app.dependency_overrides.clear()
         main.app.dependency_overrides.update(self._original_overrides)
 
