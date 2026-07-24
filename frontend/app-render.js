@@ -609,7 +609,32 @@ function createDetectiveCaptureNode(){
   const analysisRows=rows.filter(row=>
     row!==original&&!row.classList.contains('recommendations-message')
   );
-  messageList.replaceChildren(...(original?[original,...analysisRows]:analysisRows));
+  let plainOriginal=null;
+  const originalMessage=original?.querySelector('.original-message');
+  if(original&&originalMessage?.classList.contains('highlighted')){
+    const originalText=currentShareSummary?.originalText
+      ||originalMessage.textContent
+      ||'';
+    plainOriginal=original.cloneNode(true);
+    plainOriginal.classList.add('capture-original-message-row');
+    const plainTitle=plainOriginal.querySelector('h3');
+    const plainMessage=plainOriginal.querySelector('.original-message');
+    const plainNote=plainOriginal.querySelector('.highlight-note');
+    if(plainTitle)plainTitle.textContent='Tin nhắn gốc';
+    if(plainMessage){
+      plainMessage.textContent=originalText;
+      plainMessage.classList.remove('highlighted');
+    }
+    if(plainNote)plainNote.remove();
+    originalMessage.textContent=originalText;
+    originalMessage.classList.add('capture-highlighted-message');
+    const highlightedTitle=original.querySelector('h3');
+    if(highlightedTitle)highlightedTitle.textContent='Phần tin nhắn cần chú ý';
+  }
+  const orderedOriginalRows=plainOriginal
+    ?[plainOriginal,original]
+    :(original?[original]:[]);
+  messageList.replaceChildren(...orderedOriginalRows,...analysisRows);
 
   const footer=document.createElement('div');
   footer.className='result-image-capture-footer';

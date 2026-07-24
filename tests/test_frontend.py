@@ -72,14 +72,14 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('href="./styles.css"', page)
         self.assertIn('src="./html2canvas.min.js"', page)
         self.assertIn('src="./app-data.js"', page)
-        self.assertIn('src="./app-render.js"', page)
+        self.assertIn('src="./app-render.js?v=38"', page)
         self.assertIn('src="./app.js"', page)
         self.assertIn('src="./offline-analyzer.js"', page)
         self.assertIn('@router.get("/html2canvas.min.js"', frontend_routes)
         self.assertIn('return frontend_file("html2canvas.min.js")', frontend_routes)
         self.assertLess(
             page.index('src="./html2canvas.min.js"'),
-            page.index('src="./app-render.js"'),
+            page.index('src="./app-render.js?v=38"'),
         )
         self.assertNotIn("<style>", page)
         self.assertNotIn("<script>", page)
@@ -102,6 +102,8 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('id="result-share-section"', page)
         self.assertIn('id="download-result-image-button"', page)
         self.assertIn('id="result-image-status"', page)
+        self.assertIn("<h2>Tóm tắt kết quả</h2>", page)
+        self.assertNotIn("<h2>Những dấu hiệu đáng chú ý</h2>", page)
         self.assertIn('Tải kết quả dạng ảnh', page)
         self.assertIn('id="result-share-title">Tải kết quả phân tích</h2>', page)
         self.assertIn('<p>Tải kết quả đánh giá tin nhắn</p>', page)
@@ -230,9 +232,15 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("function createDetectiveCaptureNode()", script)
         self.assertIn("source.cloneNode(true)", script)
         self.assertIn("row.classList.contains('original-message-row')", script)
+        self.assertIn("originalMessage?.classList.contains('highlighted')", script)
+        self.assertIn("currentShareSummary?.originalText", script)
+        self.assertIn("plainOriginal.classList.add('capture-original-message-row')", script)
+        self.assertIn("plainTitle.textContent='Tin nhắn gốc'", script)
+        self.assertIn("originalMessage.classList.add('capture-highlighted-message')", script)
+        self.assertIn("highlightedTitle.textContent='Phần tin nhắn cần chú ý'", script)
         self.assertIn("!row.classList.contains('recommendations-message')", script)
         self.assertIn(
-            "messageList.replaceChildren(...(original?[original,...analysisRows]:analysisRows))",
+            "messageList.replaceChildren(...orderedOriginalRows,...analysisRows)",
             script,
         )
         self.assertIn("typeof window.html2canvas!=='function'", script)
@@ -376,6 +384,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn(".result-image-capture-shell{position:fixed", styles)
         self.assertIn("width:390px", styles)
         self.assertIn(".result-image-capture.result-section{width:362px", styles)
+        self.assertIn(".result-image-capture .original-message.capture-highlighted-message", styles)
         self.assertIn(".result-image-capture-footer canvas", styles)
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
@@ -386,7 +395,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('"/detective-avatar.png"', service_worker)
         self.assertIn('"/psychologist-avatar.png"', service_worker)
         self.assertIn('"/responder-avatar.png"', service_worker)
-        self.assertIn('CACHE_NAME="scamcheck-shell-v35"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v38"', service_worker)
         self.assertIn(
             'new Set(["/","/styles.css","/html2canvas.min.js","/app-data.js","/app-render.js","/app.js"])',
             service_worker,
