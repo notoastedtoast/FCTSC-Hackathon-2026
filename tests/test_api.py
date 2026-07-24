@@ -193,6 +193,18 @@ class AnalyzeAPITests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["Vietcombank"], "1900545413")
 
+    async def test_responder_accepts_no_bank_selection(self) -> None:
+        analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})
+        output = ResponderOutput(steps=["Gọi 113 để trình báo.", "Lưu bằng chứng."])
+        self.mock_gemini.add_analysis(output)
+        self.database.get_history_item.return_value = {"analysis": Analysis(success=True, analysis=analysis).model_dump()}
+
+        response = await self.client.post("/responder/", json={"history_id": self.history_id, "choice": "sent-money", "hotlines": {"Công an": "113"}, "no_bank": True})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('"no_bank": true', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+        self.assertIn('"selected_bank": null', self.mock_gemini.request_json()["contents"][0]["parts"][0]["text"])
+
     async def test_responder_rejects_unknown_output_phone(self) -> None:
         analysis = DetectiveAnalysis(risk_level=0.9, reasoning="Risk.", suggestions=[], excerpts={})
         self.mock_gemini.add_analysis(ResponderOutput(steps=["Gọi 999.", "Khóa tài khoản."]))

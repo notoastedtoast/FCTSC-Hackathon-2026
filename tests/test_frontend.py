@@ -307,6 +307,8 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("requestJson('/responder/'", script)
         self.assertIn("await generateResponder(option.dataset.postAnalysisChoice,await loadTelephones())", script)
         self.assertIn("function askForBank(choice,hotlines)", script)
+        self.assertIn("Không có ngân hàng trong danh sách", script)
+        self.assertIn("no_bank:noBank", script)
         self.assertIn("output.needs_bank", script)
         self.assertIn("const row=document.createElement('li')", script)
         self.assertIn("text.textContent=step", script)

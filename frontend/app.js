@@ -848,10 +848,10 @@ function submitPracticeAnswer(answer,selectedButton){
 messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
-async function generateResponder(choice,hotlines,bank=null){
+async function generateResponder(choice,hotlines,bank=null,noBank=false){
   try{
-    const output=await requestJson('/responder/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history_id:postAnalysisQuestion.dataset.analysisId,choice,hotlines,bank})});
-    if(!bank&&output.needs_bank&&askForBank(choice,hotlines))return;
+    const output=await requestJson('/responder/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history_id:postAnalysisQuestion.dataset.analysisId,choice,hotlines,bank,no_bank:noBank})});
+    if(!bank&&!noBank&&output.needs_bank&&askForBank(choice,hotlines))return;
     bankQuestion.hidden=true;
     const historyId=String(postAnalysisQuestion.dataset.analysisId||'');
     if(historyId){
@@ -866,8 +866,7 @@ async function generateResponder(choice,hotlines,bank=null){
 
 function askForBank(choice,hotlines){
   const banks=Object.entries(hotlines).filter(([name])=>name!=='Công an');
-  if(banks.length===0)return false;
-  bankOptions.replaceChildren(...banks.map(([name,number])=>{
+  const buttons=banks.map(([name,number])=>{
     const button=document.createElement('button');
     button.className='post-analysis-option';
     button.type='button';
@@ -877,7 +876,17 @@ function askForBank(choice,hotlines){
       await generateResponder(choice,{[name]:number},name);
     });
     return button;
-  }));
+  });
+  const noBankButton=document.createElement('button');
+  noBankButton.className='post-analysis-option';
+  noBankButton.type='button';
+  noBankButton.textContent='Không có ngân hàng trong danh sách';
+  noBankButton.addEventListener('click',async()=>{
+    bankOptions.querySelectorAll('button').forEach(item=>{item.disabled=true});
+    const police=hotlines['Công an'];
+    await generateResponder(choice,police?{'Công an':police}:{},null,true);
+  });
+  bankOptions.replaceChildren(...buttons,noBankButton);
   bankQuestion.hidden=false;
   revealResultMessage(bankQuestion);
   return true;
