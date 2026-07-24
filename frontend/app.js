@@ -3,6 +3,7 @@
    app-render.js. This file keeps the routing, API calls, and event wiring. */
 
 
+// --- Accessibility and display preferences --------------------------------------
 function readDisplayPreferences(){
   try{
     const saved=JSON.parse(localStorage.getItem(DISPLAY_PREFERENCES_KEY)||'{}');
@@ -58,6 +59,7 @@ window.addEventListener('storage',event=>{
   applyDisplayPreferences(displayPreferences);
 });
 
+// --- Remaining-analysis counter --------------------------------------------------
 function renderRemainingAnalyses(){
   usage.textContent=`Số lượt phân tích còn lại: ${remainingAnalyses} lần`;
 }
@@ -92,6 +94,7 @@ function decrementRemainingAnalyses(){
   renderRemainingAnalyses();
 }
 
+// --- Layout helpers and hash routing --------------------------------------------
 // Move quick sample cards below the main submit button on small screens.
 function syncQuickInputLayout(){
   if(mobileLayoutQuery.matches){
@@ -109,9 +112,24 @@ function routeFromHash(){
   const candidate=window.location.hash.slice(1);
   if(candidate.startsWith('result/')){
     try{
-      return {view:'result',resultId:decodeURIComponent(candidate.slice(7))};
+      return {
+        view:'result',
+        resultId:decodeURIComponent(candidate.slice(7)),
+        fromHistory:false
+      };
     }catch(error){
       return {view:'analyze',resultId:null};
+    }
+  }
+  if(candidate.startsWith('history/')){
+    try{
+      return {
+        view:'result',
+        resultId:decodeURIComponent(candidate.slice(8)),
+        fromHistory:true
+      };
+    }catch(error){
+      return {view:'history',resultId:null,fromHistory:false};
     }
   }
   if(candidate==='library')return {view:'library',detailId:null};
@@ -130,7 +148,8 @@ let resultFromHistoryId=null;
 function openResultPage(id,{fromHistory=false}={}){
   if(!id)return;
   resultFromHistoryId=fromHistory?String(id):null;
-  const hash=`#result/${encodeURIComponent(id)}`;
+  const routePrefix=fromHistory?'history':'result';
+  const hash=`#${routePrefix}/${encodeURIComponent(id)}`;
   if(window.location.hash===hash)syncRoute({focus:true});
   else window.location.hash=hash;
 }
@@ -158,6 +177,7 @@ function switchView(view,{focus=false}={}){
   updateResultScrollButton();
 }
 
+// --- Result-page auto-follow / scrolling ----------------------------------------
 function resultViewIsVisible(){
   const view=resultFrame.closest('[data-view-panel]');
   return resultFrame.classList.contains('active')&&!view?.hidden;
@@ -263,6 +283,7 @@ function hideProcessingFrame(){
   processingFrame.setAttribute('aria-busy','false');
 }
 
+// --- Composer input, draft, and voice controls ----------------------------------
 function showFeedback(message,type='error'){feedback.textContent=message;feedback.className=`feedback ${type}`}
 function hideFeedback(){feedback.textContent='';feedback.className='feedback'}
 function saveDraft(){
@@ -283,6 +304,7 @@ function restoreDraft(){
 }
 function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;checkButton.disabled=isAnalyzing||(!isOffline&&sessionAtLimit)||clean.length<MIN_LENGTH;if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{hideFeedback();messageInput.removeAttribute('aria-invalid')}}
 function setupSpeechRecognition(){const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Bạn vẫn có thể nhập hoặc dán nội dung.';return}recognition=new SpeechRecognition();recognition.lang='vi-VN';recognition.interimResults=true;recognition.continuous=true;let finalTranscript='';recognition.onstart=()=>{isRecording=true;finalTranscript='';voiceButton.classList.add('recording');voiceButton.setAttribute('aria-pressed','true');voiceButton.title='Tắt micro';voiceButtonLabel.textContent='Tắt micro';voiceStatus.textContent='Đang ghi âm… Hãy đọc rõ nội dung tin nhắn.'};recognition.onresult=(event)=>{let interimTranscript='';for(let i=event.resultIndex;i<event.results.length;i++){const transcript=event.results[i][0].transcript;if(event.results[i].isFinal)finalTranscript+=transcript+' ';else interimTranscript+=transcript}const combined=`${finalTranscript}${interimTranscript}`.trim();if(combined){const base=messageInput.dataset.beforeVoice||'';messageInput.value=base?`${base} ${combined}`:combined;messageInput.dispatchEvent(new Event('input'))}};recognition.onerror=(event)=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(event.error==='not-allowed'||event.error==='service-not-allowed')voiceStatus.textContent='Không thể dùng micro vì quyền truy cập đã bị từ chối. Bạn vẫn có thể nhập nội dung bằng bàn phím.';else if(event.error==='no-speech')voiceStatus.textContent='Chưa nhận được giọng nói. Vui lòng thử lại và nói gần micro hơn.';else voiceStatus.textContent='Tính năng giọng nói tạm thời chưa hoạt động. Vui lòng nhập nội dung thủ công.'};recognition.onend=()=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(!voiceStatus.textContent.includes('từ chối')&&!voiceStatus.textContent.includes('tạm thời')&&!voiceStatus.textContent.includes('Chưa nhận'))voiceStatus.textContent='Đã dừng ghi âm.';delete messageInput.dataset.beforeVoice}}
+// --- History storage and merge logic --------------------------------------------
 function getHistory(){
   return historyCache;
 }
@@ -349,10 +371,19 @@ function backendHistoryToItem(entry){
   return {
     id:String(entry?.id||''),
     message:String(entry?.message||''),
-    date:String(entry?.created_at||''),
+    date:normalizeHistoryTimestamp(entry?.created_at),
     result,
     offline:false
   };
+}
+
+// Backend history rows arrive as UTC strings without an explicit offset.
+function normalizeHistoryTimestamp(value){
+  const raw=String(value||'').trim();
+  if(!raw)return '';
+  if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(raw))return `${raw.replace(' ','T')}Z`;
+  if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(raw))return `${raw}Z`;
+  return raw;
 }
 
 function readOfflineHistory(){
@@ -427,6 +458,8 @@ function saveOfflineHistory(message,result){
   return entry;
 }
 
+// Pull online history from the backend when possible, then merge it with
+// browser-kept entries so revisits still show previous results.
 async function loadHistory(){
   historyList.replaceChildren();
   const loading=document.createElement('p');
@@ -617,14 +650,26 @@ async function confirmDeleteSelectedHistory(){
     const selected=getHistory().filter(item=>selectedHistoryIds.has(item.id));
     const onlineIds=selected.filter(item=>!item.offline).map(item=>item.id);
     const offlineIds=new Set(selected.filter(item=>item.offline).map(item=>item.id));
-    await Promise.all(onlineIds.map(id=>requestJson(`/history/${encodeURIComponent(id)}`,{
-      method:'DELETE'
-    })));
+    // Stale saved entries may no longer exist on the backend after a restart.
+    // Treat 404 as safe to remove locally so History stays usable.
+    const removableOnlineIds=new Set();
+    await Promise.all(onlineIds.map(async id=>{
+      try{
+        await requestJson(`/history/${encodeURIComponent(id)}`,{method:'DELETE'});
+        removableOnlineIds.add(id);
+      }catch(error){
+        if(error?.status===404){
+          removableOnlineIds.add(id);
+          return;
+        }
+        throw error;
+      }
+    }));
     if(offlineIds.size){
       writeOfflineHistory(readOfflineHistory().filter(item=>!offlineIds.has(item.id)));
     }
-    if(onlineIds.length){
-      writeOnlineHistory(readOnlineHistory().filter(item=>!onlineIds.includes(item.id)));
+    if(removableOnlineIds.size){
+      writeOnlineHistory(readOnlineHistory().filter(item=>!removableOnlineIds.has(item.id)));
     }
     selectedHistoryIds.clear();
     deleteConfirmModal.classList.remove('open');
@@ -641,13 +686,16 @@ async function confirmDeleteSelectedHistory(){
   }
 }
 
+// --- API adapter and online result preparation ----------------------------------
 function apiErrorMessage(statusCode,detail){
   if(statusCode===409)return 'Yêu cầu này vẫn đang được xử lý. Bác vui lòng thử lại sau ít phút.';
   if(statusCode===429)return 'Phiên này đã dùng hết lượt kiểm tra AI. Bác vui lòng xem lại các kết quả đã lưu.';
   if(statusCode===502)return 'Dịch vụ phân tích đang tạm thời gián đoạn. Bác vui lòng thử lại sau.';
   if(statusCode===503)return 'Không thể lưu kết quả lúc này. Bác vui lòng thử lại sau.';
   if(statusCode===422)return 'Nội dung gửi lên chưa hợp lệ. Bác hãy kiểm tra và thử lại.';
-  return typeof detail==='string'&&detail?'Không thể hoàn tất yêu cầu lúc này.':'Không thể kết nối tới máy chủ.';
+  return typeof detail==='string'&&detail
+    ?'Không thể hoàn tất yêu cầu lúc này.'
+    :'Máy chủ đã phản hồi nhưng dữ liệu trả về chưa hợp lệ. Bác vui lòng thử lại sau.';
 }
 
 async function requestJson(path,options={}){
@@ -674,7 +722,19 @@ async function requestJson(path,options={}){
     }
   }
 
-  const response=await fetch(requestPath,requestOptions);
+  let response;
+  try{
+    response=await fetch(requestPath,requestOptions);
+  }catch(error){
+    const requestError=new Error(
+      navigator.onLine
+        ?'Không thể kết nối tới dịch vụ ScamCheck. Máy chủ có thể đang tạm thời gián đoạn; bác vui lòng thử lại sau.'
+        :'Thiết bị đang mất kết nối mạng. Nội dung vẫn được giữ để bác thử lại khi có mạng.'
+    );
+    requestError.transportFailure=true;
+    requestError.networkInterrupted=!navigator.onLine;
+    throw requestError;
+  }
   let payload=null;
   try{
     payload=await response.json();
@@ -685,6 +745,13 @@ async function requestJson(path,options={}){
     const requestError=new Error(apiErrorMessage(response.status,payload?.detail));
     requestError.status=response.status;
     throw requestError;
+  }
+  if(requestPath==='/analyze/'&&payload===null){
+    const responseError=new Error(
+      'Dịch vụ phân tích đã phản hồi nhưng kết quả không đúng định dạng. Bác vui lòng thử lại sau.'
+    );
+    responseError.responseInvalid=true;
+    throw responseError;
   }
   if(requestPath==='/analyze/'&&submittedText!==null){
     if(onAnalysisResult){
@@ -702,6 +769,8 @@ async function loadUsageCompat(){
   renderRemainingAnalyses();
 }
 
+// Convert the older backend shape into the richer payload that the current
+// frontend renderer expects, then cache it for history/result review.
 async function prepareOnlineResult(submittedText,analysisResult){
   const needsGuide=['medium','high'].includes(analysisResult?.risk_level);
   let entries=[];
@@ -739,7 +808,7 @@ async function prepareOnlineResult(submittedText,analysisResult){
   const payload=backendAnalysisToPayload(analysisResult,{guideOutput,guideUnavailable});
   if(entry){
     payload.id=String(entry.id||'');
-    payload.date=String(entry.created_at||new Date().toISOString());
+    payload.date=normalizeHistoryTimestamp(entry.created_at)||new Date().toISOString();
   }
   return saveOnlineHistoryEntry({
     id:String(payload.id||entry?.id||`online-${Date.now()}-${Math.random().toString(16).slice(2)}`),
@@ -750,6 +819,7 @@ async function prepareOnlineResult(submittedText,analysisResult){
   }).result;
 }
 
+// --- Connectivity and service worker --------------------------------------------
 function applyUsage(aiUsage){
   const used=Number(aiUsage?.used||0);
   const limit=Number(aiUsage?.limit||0);
@@ -786,6 +856,7 @@ function setPracticeAnswersDisabled(disabled){
   practiceAnswerButtons.forEach(button=>{button.disabled=disabled});
 }
 
+// --- Practice page --------------------------------------------------------------
 function shuffledPracticePrompts(){
   const prompts=[...practicePrompts];
   for(let index=prompts.length-1;index>0;index-=1){
@@ -845,6 +916,7 @@ function submitPracticeAnswer(answer,selectedButton){
   practiceNextButton.focus();
 }
 
+// --- Analysis submission flow ---------------------------------------------------
 messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
@@ -999,6 +1071,8 @@ function pendingAnalysisFor(message){
   return pending;
 }
 
+// Central check flow: choose offline or online analysis, save the result,
+// then open the result page.
 async function runAnalysis(submittedText){
   if(isAnalyzing)return;
   isAnalyzing=true;
@@ -1012,35 +1086,28 @@ async function runAnalysis(submittedText){
       payload=ScamCheckOffline.analyze(submittedText);
       payload.id=saveOfflineHistory(submittedText,payload).id;
     }else{
+      const pending=pendingAnalysisFor(submittedText);
+      payload=await requestJson('/analyze',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'X-ScamCheck-Request-ID':pending.requestId
+        },
+        body:JSON.stringify({text:submittedText,source:'web'})
+      });
       try{
-        const pending=pendingAnalysisFor(submittedText);
-        payload=await requestJson('/analyze',{
-          method:'POST',
-          headers:{
-            'Content-Type':'application/json',
-            'X-ScamCheck-Request-ID':pending.requestId
-          },
-          body:JSON.stringify({text:submittedText,source:'web'})
-        });
-        try{
-          sessionStorage.removeItem(PENDING_ANALYSIS_KEY);
-        }catch(error){
-          // The response is still valid when tab storage is unavailable.
-        }
-        if(payload?.usage)applyUsage(payload.usage);
-        if(payload?.id&&!historyCache.some(item=>item.id===payload.id))historyCache.unshift({
-          id:payload.id,
-          message:submittedText,
-          date:payload.date||new Date().toISOString(),
-          result:payload,
-          offline:false
-        });
+        sessionStorage.removeItem(PENDING_ANALYSIS_KEY);
       }catch(error){
-        if(Number.isInteger(error.status))throw error;
-        const interruptedError=new Error('Kết nối mạng không ổn định. Nội dung vẫn được giữ trong ô nhập; bác hãy thử lại khi đường truyền ổn định.');
-        interruptedError.networkInterrupted=true;
-        throw interruptedError;
+        // The response is still valid when tab storage is unavailable.
       }
+      if(payload?.usage)applyUsage(payload.usage);
+      if(payload?.id&&!historyCache.some(item=>item.id===payload.id))historyCache.unshift({
+        id:payload.id,
+        message:submittedText,
+        date:payload.date||new Date().toISOString(),
+        result:payload,
+        offline:false
+      });
     }
     connectivityStatus.hidden=true;
     openResultPage(payload.id);
@@ -1048,7 +1115,10 @@ async function runAnalysis(submittedText){
     hideProcessingFrame();
     inputFrame.style.display='block';
     if(error.networkInterrupted){
-      showConnectivityNotice('Kết nối mạng không ổn định. Bác hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại.');
+      showConnectivityNotice('Thiết bị đang mất kết nối. ScamCheck sẽ phân tích sơ bộ ngay trên thiết bị.');
+      showFeedback(error.message,'info');
+    }else if(error.transportFailure){
+      connectivityStatus.hidden=true;
       showFeedback(error.message,'info');
     }else{
       if(error.status===429){
@@ -1058,7 +1128,11 @@ async function runAnalysis(submittedText){
         renderRemainingAnalyses();
       }
       if(navigator.onLine)connectivityStatus.hidden=true;
-      showFeedback(Number.isInteger(error.status)?error.message:'Không thể kết nối tới máy chủ.');
+      showFeedback(
+        Number.isInteger(error.status)||error.responseInvalid
+          ?error.message
+          :'Đã xảy ra lỗi khi xử lý kết quả. Nội dung vẫn được giữ; bác vui lòng thử lại.'
+      );
     }
     void loadUsageCompat();
     messageInput.focus();
@@ -1069,6 +1143,7 @@ async function runAnalysis(submittedText){
   }
 }
 
+// --- Scam library and hotline browser -------------------------------------------
 function createLibraryIcon(group,className=''){
   const details=scamGroupDetails[group]||scamGroupDetails.fake_bank;
   const wrapper=document.createElement('span');
@@ -1228,6 +1303,7 @@ function syncLibraryRoute(){
   else showLibraryList();
 }
 
+// --- Route syncing and global event wiring --------------------------------------
 async function showResultRoute(resultId){
   try{
     const savedItem=readSavedHistoryItem(resultId);
@@ -1235,7 +1311,9 @@ async function showResultRoute(resultId){
     if(!item?.result)throw new Error('Saved result not found');
     const route=routeFromHash();
     if(route.view!=='result'||route.resultId!==resultId)return;
-    showResultFrame(item.message,item.result,{fromHistory:resultFromHistoryId===resultId});
+    showResultFrame(item.message,{...item.result,date:item.result.date||item.date},{
+      fromHistory:route.fromHistory||resultFromHistoryId===resultId
+    });
     resultFromHistoryId=null;
   }catch(error){
     if(routeFromHash().view==='result')window.location.hash='history';
@@ -1246,6 +1324,12 @@ function syncRoute({focus=false}={}){
   const route=routeFromHash();
   if(route.view==='analyze'&&resultFrame.classList.contains('active'))showComposerFrame();
   switchView(route.view,{focus});
+  if(route.view==='result'&&route.fromHistory){
+    navLinks.forEach(link=>{
+      if(link.dataset.view==='history')link.setAttribute('aria-current','page');
+      else link.removeAttribute('aria-current');
+    });
+  }
   if(route.view==='library')syncLibraryRoute();
   if(route.view==='result'&&route.resultId)void showResultRoute(route.resultId);
 }

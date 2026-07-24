@@ -30,6 +30,8 @@ from .wrapper import GeminiWrapper
 
 logger = logging.getLogger(__name__)
 
+# --- App boot and shared services -------------------------------------------------
+
 # Deployment fix: local `.env` is optional because platforms like Vercel inject
 # environment variables without creating a file on disk. We must not exit just
 # because the file itself is absent.
@@ -47,6 +49,7 @@ def get_client() -> GeminiWrapper:
 
 ClientDep = Annotated[GeminiWrapper, Depends(get_client)]
 
+# --- Session quota helpers --------------------------------------------------------
 
 async def get_database(request: Request) -> HistoryDatabase:
     database: HistoryDatabase = request.app.state.database
@@ -54,7 +57,6 @@ async def get_database(request: Request) -> HistoryDatabase:
 
 
 DatabaseDep = Annotated[HistoryDatabase, Depends(get_database)]
-
 
 def _call_count(session_id: str, cookie: str | None) -> int:
     if cookie is None:
@@ -91,6 +93,8 @@ def consume_ai_call(response: Response, session_id: str | None, cookie: str | No
     return session_id
 
 
+# --- FastAPI lifecycle ------------------------------------------------------------
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     database: HistoryDatabase = application.state.database
@@ -107,6 +111,10 @@ app.state.database = HistoryDatabase(":memory:")
 app.include_router(frontend_router)
 
 
+# --- API routes ------------------------------------------------------------------
+
+# Main analysis entrypoint: run deterministic checks, call the Detective model,
+# then save the finished result into history for later review.
 @app.post("/analyze/")
 async def analyze(
     client: ClientDep,
@@ -136,6 +144,7 @@ async def analyze(
     return result
 
 
+# Optional follow-up guide for suspicious or risky results.
 @app.post(
     "/guide/",
     response_model=GuideOutput,
@@ -170,6 +179,8 @@ async def guide(
     return output
 
 
+# Post-analysis responder: generate urgent next steps using only approved
+# hotline numbers and previously saved analysis context.
 @app.post("/responder/", response_model=ResponderOutput)
 async def responder(client: ClientDep, database: DatabaseDep, data: ResponderRequest) -> ResponderOutput:
     item = await database.get_history_item(str(data.history_id))
@@ -198,6 +209,7 @@ async def responder(client: ClientDep, database: DatabaseDep, data: ResponderReq
         raise HTTPException(502, "AI responder generation failed") from e
 
 
+# Session-scoped history list used by the History page in the frontend.
 @app.get("/history/")
 async def history(
     database: DatabaseDep,
@@ -208,6 +220,8 @@ async def history(
     return await database.get_history(session_id)
 
 
+# Public fetch for one saved result by UUID. The frontend uses this for
+# result-page deep links and history review.
 @app.get("/history/{history_id}")
 async def history_item(history_id: UUID, database: DatabaseDep) -> HistoryEntry:
     item = await database.get_history_item(str(history_id))
@@ -216,6 +230,7 @@ async def history_item(history_id: UUID, database: DatabaseDep) -> HistoryEntry:
     return item
 
 
+# Delete only the current session's saved history item.
 @app.delete("/history/{history_id}", status_code=204)
 async def delete_history(
     history_id: UUID,
@@ -227,6 +242,8 @@ async def delete_history(
     if not await database.delete_history(session_id, str(history_id)):
         raise HTTPException(404, "History item not found")
 
+
+# Minimal health check for deployment smoke tests.
 @app.get("/health/")
 async def health() -> JSONResponse:
     data = {"status": "active"}

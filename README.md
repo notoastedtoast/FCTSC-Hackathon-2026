@@ -23,19 +23,6 @@ runs in the browser only; it does not call AI or save the exposure selection.
 - Package/dependency manager: `uv`
 - Type checking: `pyright`
 
-## Important current behavior
-
-- The main app entrypoint is `src/main.py`.
-- The backend currently exposes the smaller stable API, not the larger rewritten one.
-- Online history is stored in memory in the running process because `src/main.py`
-  creates `HistoryDatabase(":memory:")`.
-- That means history resets when the server restarts, the process reloads, or Vercel
-  redeploys.
-- The per-session AI call counter is stored in a signed, HttpOnly cookie. Set
-  `AI_SESSION_COOKIE_SECRET` in production so it remains valid across restarts.
-- The current backend uses Gemini only. It does not currently use PostgreSQL,
-  Supabase, Groq, or request-id idempotency in the live app path.
-
 ## Features in the current frontend
 
 - Analyze suspicious messages

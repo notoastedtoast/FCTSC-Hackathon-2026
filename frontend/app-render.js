@@ -1,5 +1,6 @@
 /* ScamCheck browser rendering helpers.
    This file only handles presentation and result rendering. */
+// --- Risk labels and descriptions shown in the result header ---------------------
 const riskPresentations={
   safe:{
     className:'safe',
@@ -18,6 +19,7 @@ const riskPresentations={
   }
 };
 
+// --- QR code generator used by the share-image feature ---------------------------
 function qrAppendBits(value,length,bits){
   for(let shift=length-1;shift>=0;shift--)bits.push((value>>>shift)&1);
 }
@@ -140,6 +142,7 @@ function createQrMatrix(value=SHARE_PRODUCT_URL){
   return modules;
 }
 
+// --- Canvas drawing helpers -----------------------------------------------------
 function drawRoundedRectangle(context,x,y,width,height,radius,fill,stroke=null,lineWidth=1){
   const safeRadius=Math.min(radius,width/2,height/2);
   context.beginPath();
@@ -218,6 +221,7 @@ function drawPreparedCanvasLines(context,lines,x,y,lineHeight){
   lines.forEach((line,index)=>context.fillText(line,x,y+index*lineHeight));
 }
 
+// --- Share-image asset loading and summary shaping -------------------------------
 function drawCanvasLines(context,value,x,y,maxWidth,lineHeight,maxLines){
   const lines=fitCanvasLines(context,value,maxWidth,maxLines);
   drawPreparedCanvasLines(context,lines,x,y,lineHeight);
@@ -297,12 +301,6 @@ function drawQr(context,x,y,pixelSize,value){
   });
 }
 
-function resultShareUrl(id){
-  return /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(id||''))
-    ?new URL(`#result/${id}`,SHARE_PRODUCT_URL).href
-    :SHARE_PRODUCT_URL;
-}
-
 function resultShareSummary(originalText,payload){
   const detective=payload?.detective||{};
   const riskLevel=detective.risk_level||'suspicious';
@@ -355,10 +353,13 @@ function resultShareSummary(originalText,payload){
     actions:defaultActions.map((fallback,index)=>
       normalizeShareText(detective.actions?.[index]||fallback)
     ),
-    resultUrl:resultShareUrl(payload?.id)
+    analyzedAt:payload?.date,
+    resultUrl:new URL('/#analyze',SHARE_PRODUCT_URL).href
   };
 }
 
+// Build the exported summary image shown when the user taps
+// "Tải kết quả dạng ảnh".
 async function createResultShareCanvas(summary){
   await waitForShareCanvasFonts();
   const canvas=document.createElement('canvas');
@@ -578,6 +579,7 @@ async function createResultShareCanvas(summary){
   return canvas;
 }
 
+// --- DOM capture helpers for result export --------------------------------------
 function createCaptureQrCanvas(value){
   const canvas=document.createElement('canvas');
   canvas.width=90;
@@ -615,7 +617,32 @@ function createDetectiveCaptureNode(){
   const analysisRows=rows.filter(row=>
     row!==original&&!row.classList.contains('recommendations-message')
   );
-  messageList.replaceChildren(...(original?[original,...analysisRows]:analysisRows));
+  let plainOriginal=null;
+  const originalMessage=original?.querySelector('.original-message');
+  if(original&&originalMessage?.classList.contains('highlighted')){
+    const originalText=currentShareSummary?.originalText
+      ||originalMessage.textContent
+      ||'';
+    plainOriginal=original.cloneNode(true);
+    plainOriginal.classList.add('capture-original-message-row');
+    const plainTitle=plainOriginal.querySelector('h3');
+    const plainMessage=plainOriginal.querySelector('.original-message');
+    const plainNote=plainOriginal.querySelector('.highlight-note');
+    if(plainTitle)plainTitle.textContent='Tin nhắn gốc';
+    if(plainMessage){
+      plainMessage.textContent=originalText;
+      plainMessage.classList.remove('highlighted');
+    }
+    if(plainNote)plainNote.remove();
+    originalMessage.textContent=originalText;
+    originalMessage.classList.add('capture-highlighted-message');
+    const highlightedTitle=original.querySelector('h3');
+    if(highlightedTitle)highlightedTitle.textContent='Phần tin nhắn cần chú ý';
+  }
+  const orderedOriginalRows=plainOriginal
+    ?[plainOriginal,original]
+    :(original?[original]:[]);
+  messageList.replaceChildren(...orderedOriginalRows,...analysisRows);
 
   const footer=document.createElement('div');
   footer.className='result-image-capture-footer';
@@ -686,10 +713,15 @@ async function saveCurrentResultImage(){
     :null;
   const canvas=await createDetectiveDomCaptureCanvas();
   const blob=await canvasToPngBlob(canvas);
-  const date=new Date().toISOString().slice(0,10);
-  const filename=`scamcheck-ket-qua-${date}.png`;
+  const analyzedAt=new Date(currentShareSummary.analyzedAt);
+  if(Number.isNaN(analyzedAt.getTime()))throw new Error('Analysis timestamp is unavailable');
+  const pad=value=>String(value).padStart(2,'0');
+  const timestamp=
+    `${analyzedAt.getFullYear()}-${pad(analyzedAt.getMonth()+1)}-${pad(analyzedAt.getDate())}_`+
+    `${pad(analyzedAt.getHours())}-${pad(analyzedAt.getMinutes())}-${pad(analyzedAt.getSeconds())}`;
+  const filename=`scamcheck-ket-qua-${timestamp}.png`;
   const file=typeof File==='function'
-    ?new File([blob],filename,{type:'image/png',lastModified:Date.now()})
+    ?new File([blob],filename,{type:'image/png',lastModified:analyzedAt.getTime()})
     :null;
   if(canAttemptFileShare&&file){
     let canShareFile=false;
@@ -731,6 +763,7 @@ async function saveCurrentResultImage(){
   return isAppleMobile?'preview':'downloaded';
 }
 
+// --- Safe text rendering for result messages ------------------------------------
 function appendHighlightedText(container,text,quotes){
   container.replaceChildren();
   const ranges=[];
@@ -769,6 +802,7 @@ function appendHighlightedText(container,text,quotes){
   if(merged.length===0)container.textContent=text;
 }
 
+// --- Detective / Psychology / Responder result blocks ----------------------------
 function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=null){
   const messageOrder=signalList.childElementCount;
   const row=document.createElement('div');
@@ -1007,20 +1041,43 @@ function appendPsychologyMessage(message){
   psychologyMessage.appendChild(row);
 }
 
-function renderPsychology(payload){
+// Only show the responder triage when the result suggests a concrete
+// exposure path such as links, money, credentials, or remote access.
+function responderExposureFlags(originalText,payload){
+  const signalText=[
+    originalText,
+    payload?.detective?.reasoning,
+    ...(payload?.detective?.indicators||[]),
+    ...(payload?.detective?.indicator_evidence||[]).flatMap(item=>[item?.label,item?.excerpt]),
+    ...(payload?.deterministic_findings||[]).flatMap(item=>[item?.kind,item?.excerpt])
+  ].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  return {
+    link:/(https?:\/\/|www\.|bit\.ly|tinyurl|t\.co|shorturl|lien ket|\blink\b|\burl\b|ma qr|\bqr\b|bam vao|nhan vao|scan\b|quet\b)/.test(signalText),
+    money:/(chuyen (?:khoan|tien)|thanh toan|dong phi|nop phi|\b\d[\d.\s]{2,}\s*(?:dong|vnd|usd|usdt)\b)/.test(signalText),
+    credentials:/(otp|mat khau|password|cccd|cvv|so the|dang nhap|xac minh|cung cap thong tin|chia se thong tin)/.test(signalText),
+    remote:/(anydesk|teamviewer|ultraviewer|chia se man hinh|dieu khien tu xa)/.test(signalText)
+  };
+}
+
+function renderPsychology(originalText,payload){
   const riskLevel=payload?.detective?.risk_level;
   const shouldShow=riskLevel==='suspicious'||riskLevel==='dangerous';
+  const exposures=responderExposureFlags(originalText,payload);
+  const shouldOfferResponder=exposures.link||exposures.money||exposures.credentials||exposures.remote;
   psychologyMessage.replaceChildren();
   postAnalysisQuestion.hidden=true;
   bankQuestion.hidden=true;
   bankOptions.replaceChildren();
-  postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id));
+  postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id&&shouldOfferResponder));
   postAnalysisQuestion.dataset.analysisId=String(payload.id||'');
   postAnalysisQuestion.dataset.riskLevel=riskLevel||'suspicious';
   responderBlock.hidden=true;
   responderSteps.replaceChildren();
   postAnalysisOptions.forEach(option=>{
     option.disabled=false;
+    option.hidden=option.dataset.postAnalysisChoice==='opened-link'&&!exposures.link
+      ||option.dataset.postAnalysisChoice==='sent-money'&&!exposures.money
+      ||option.dataset.postAnalysisChoice==='shared-info'&&!(exposures.link||exposures.credentials||exposures.remote);
     option.classList.remove('selected');
     option.setAttribute('aria-pressed','false');
   });
@@ -1064,6 +1121,7 @@ function renderResponderGuidance(steps){
   revealRows(items);
 }
 
+// Main renderer for the result page after online or offline analysis finishes.
 function showResultFrame(text,payload,{fromHistory=false}={}){
   const detective=payload.detective;
   const risk=riskPresentations[detective.risk_level]||riskPresentations.suspicious;
@@ -1081,7 +1139,7 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
     :risk.description;
 
   renderSignals(detective,payload.deterministic_findings,text);
-  renderPsychology(payload);
+  renderPsychology(text,payload);
   if(Array.isArray(payload.responder_output?.steps)&&!payload.responder_output.needs_bank){
     renderResponderGuidance(payload.responder_output.steps);
   }

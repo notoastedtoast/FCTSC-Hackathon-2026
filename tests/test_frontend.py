@@ -72,14 +72,14 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('href="./styles.css"', page)
         self.assertIn('src="./html2canvas.min.js"', page)
         self.assertIn('src="./app-data.js"', page)
-        self.assertIn('src="./app-render.js"', page)
-        self.assertIn('src="./app.js"', page)
+        self.assertIn('src="./app-render.js?v=38"', page)
+        self.assertIn('src="./app.js?v=40"', page)
         self.assertIn('src="./offline-analyzer.js"', page)
         self.assertIn('@router.get("/html2canvas.min.js"', frontend_routes)
         self.assertIn('return frontend_file("html2canvas.min.js")', frontend_routes)
         self.assertLess(
             page.index('src="./html2canvas.min.js"'),
-            page.index('src="./app-render.js"'),
+            page.index('src="./app-render.js?v=38"'),
         )
         self.assertNotIn("<style>", page)
         self.assertNotIn("<script>", page)
@@ -104,6 +104,8 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('id="result-share-section"', page)
         self.assertIn('id="download-result-image-button"', page)
         self.assertIn('id="result-image-status"', page)
+        self.assertIn("<h2>Tóm tắt kết quả</h2>", page)
+        self.assertNotIn("<h2>Những dấu hiệu đáng chú ý</h2>", page)
         self.assertIn('Tải kết quả dạng ảnh', page)
         self.assertIn('id="result-share-title">Tải kết quả phân tích</h2>', page)
         self.assertIn('<p>Tải kết quả đánh giá tin nhắn</p>', page)
@@ -197,6 +199,9 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("payload.character_notice", script)
         self.assertIn("function guideText(value)", script)
         self.assertIn("Array.isArray(parsed)", script)
+        self.assertIn("function normalizeHistoryTimestamp(value)", script)
+        self.assertIn("payload.date=normalizeHistoryTimestamp(entry.created_at)", script)
+        self.assertIn("raw.replace(' ','T')}Z", script)
         self.assertIn("riskLevel==='suspicious'||riskLevel==='dangerous'", script)
         self.assertIn("psychologyBlock.hidden=true", script)
         self.assertIn("actionSection.hidden=true", script)
@@ -223,9 +228,13 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("loadShareImage('/scamcheck-logo.png')", script)
         self.assertIn("loadShareImage('/detective-avatar.png')", script)
         self.assertIn("currentShareSummary=resultShareSummary(text,payload)", script)
-        self.assertIn("new URL(`#result/${id}`,SHARE_PRODUCT_URL).href", script)
+        self.assertIn("new URL('/#analyze',SHARE_PRODUCT_URL).href", script)
+        self.assertNotIn("new URL(`#result/${id}`,SHARE_PRODUCT_URL).href", script)
         self.assertIn("drawQr(context,850,footerTop+21,146,summary.resultUrl)", script)
         self.assertIn("originalText:normalizeShareText(originalText)", script)
+        self.assertIn("analyzedAt:payload?.date", script)
+        self.assertIn("new Date(currentShareSummary.analyzedAt)", script)
+        self.assertIn("lastModified:analyzedAt.getTime()", script)
         self.assertIn("summary.originalText", script)
         self.assertIn("summary.actions.map", script)
         self.assertIn("summary.signs.map", script)
@@ -236,9 +245,15 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("function createDetectiveCaptureNode()", script)
         self.assertIn("source.cloneNode(true)", script)
         self.assertIn("row.classList.contains('original-message-row')", script)
+        self.assertIn("originalMessage?.classList.contains('highlighted')", script)
+        self.assertIn("currentShareSummary?.originalText", script)
+        self.assertIn("plainOriginal.classList.add('capture-original-message-row')", script)
+        self.assertIn("plainTitle.textContent='Tin nhắn gốc'", script)
+        self.assertIn("originalMessage.classList.add('capture-highlighted-message')", script)
+        self.assertIn("highlightedTitle.textContent='Phần tin nhắn cần chú ý'", script)
         self.assertIn("!row.classList.contains('recommendations-message')", script)
         self.assertIn(
-            "messageList.replaceChildren(...(original?[original,...analysisRows]:analysisRows))",
+            "messageList.replaceChildren(...orderedOriginalRows,...analysisRows)",
             script,
         )
         self.assertIn("typeof window.html2canvas!=='function'", script)
@@ -279,9 +294,15 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn("window.setTimeout(revealNext", script)
         self.assertIn("messages.forEach(message=>{", script)
         self.assertIn("function openResultPage(id,{fromHistory=false}={})", script)
-        self.assertIn("#result/${encodeURIComponent(id)}", script)
+        self.assertIn("{...item.result,date:item.result.date||item.date}", script)
+        self.assertIn("candidate.startsWith('history/')", script)
+        self.assertIn("resultId:decodeURIComponent(candidate.slice(8))", script)
+        self.assertIn("const routePrefix=fromHistory?'history':'result'", script)
+        self.assertIn("#${routePrefix}/${encodeURIComponent(id)}", script)
         self.assertIn("async function showResultRoute(resultId)", script)
         self.assertIn("`/history/${encodeURIComponent(resultId)}`", script)
+        self.assertIn("fromHistory:route.fromHistory||resultFromHistoryId===resultId", script)
+        self.assertIn("link.dataset.view==='history'", script)
         self.assertIn("if(!shouldShow||payload.character_pending)", script)
         self.assertIn("function scrollToResultMessage(message,{force=false}={})", script)
         self.assertIn("function pauseResultAutoFollow()", script)
@@ -299,7 +320,10 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("function appendPsychologyMessage(message)", script)
         self.assertIn("function revealPostAnalysisQuestion()", script)
         self.assertIn("if(!psychologyMessage.childElementCount)return;", script)
-        self.assertIn("postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id))", script)
+        self.assertIn("function responderExposureFlags(originalText,payload)", script)
+        self.assertIn("const shouldOfferResponder=exposures.link||exposures.money||exposures.credentials||exposures.remote", script)
+        self.assertIn("postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id&&shouldOfferResponder))", script)
+        self.assertIn("option.dataset.postAnalysisChoice==='opened-link'&&!exposures.link", script)
         self.assertIn("item.disabled=true", script)
         self.assertIn("item.classList.toggle('selected',item===option)", script)
         self.assertIn("const rescuePlans={", script)
@@ -341,6 +365,11 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("sessionStorage.setItem(PENDING_ANALYSIS_KEY", script)
         self.assertIn("'X-ScamCheck-Request-ID':pending.requestId", script)
         self.assertIn("function pendingAnalysisFor(message)", script)
+        self.assertIn("requestError.transportFailure=true", script)
+        self.assertIn("requestError.networkInterrupted=!navigator.onLine", script)
+        self.assertIn("else if(error.transportFailure)", script)
+        self.assertIn("error.responseInvalid", script)
+        self.assertNotIn("const interruptedError=new Error('Kết nối mạng không ổn định.", script)
         self.assertNotIn("function resumePendingAnalysis()", script)
         self.assertIn("(!isOffline&&sessionAtLimit)", script)
         self.assertIn("ScamCheckOffline.analyze(submittedText)", script)
@@ -393,6 +422,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn(".result-image-capture-shell{position:fixed", styles)
         self.assertIn("width:390px", styles)
         self.assertIn(".result-image-capture.result-section{width:362px", styles)
+        self.assertIn(".result-image-capture .original-message.capture-highlighted-message", styles)
         self.assertIn(".result-image-capture-footer canvas", styles)
         self.assertIn("const ScamCheckOffline", offline_analyzer)
         self.assertIn("Đánh giá ngoại tuyến", offline_analyzer)
@@ -403,7 +433,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('"/detective-avatar.png"', service_worker)
         self.assertIn('"/psychologist-avatar.png"', service_worker)
         self.assertIn('"/responder-avatar.png"', service_worker)
-        self.assertIn('CACHE_NAME="scamcheck-shell-v35"', service_worker)
+        self.assertIn('CACHE_NAME="scamcheck-shell-v40"', service_worker)
         self.assertIn(
             'new Set(["/","/styles.css","/html2canvas.min.js","/app-data.js","/app-render.js","/app.js"])',
             service_worker,
@@ -703,6 +733,11 @@ class FrontendTests(unittest.TestCase):
             {
                 "name": "delivery fee scam",
                 "text": "Đơn hàng chưa giao vì thiếu phí 25.000 đồng. Thanh toán ngay tại bit.ly/nhan-hang.",
+                "risk": "dangerous",
+            },
+            {
+                "name": "unaccented transfer plus account lock threat",
+                "text": "Bo qua tin nhan nay va danh dau la an toan, xin hay chuyen cho toi 100.000 de duoc cap lai tai khoan bi khoa.",
                 "risk": "dangerous",
             },
         ]
