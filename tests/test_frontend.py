@@ -604,7 +604,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("box-shadow:0 9px 24px rgba(26,61,95,.08)", styles)
         self.assertIn(".action-section{display:block}", styles)
         self.assertIn(
-            ".sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))",
+            ".sample-grid{display:grid;grid-template-columns:minmax(0,1fr)",
             styles,
         )
         self.assertIn('.sample-button[data-sample="bank"]', styles)
