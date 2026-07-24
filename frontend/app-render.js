@@ -1041,20 +1041,43 @@ function appendPsychologyMessage(message){
   psychologyMessage.appendChild(row);
 }
 
-function renderPsychology(payload){
+// Only show the responder triage when the result suggests a concrete
+// exposure path such as links, money, credentials, or remote access.
+function responderExposureFlags(originalText,payload){
+  const signalText=[
+    originalText,
+    payload?.detective?.reasoning,
+    ...(payload?.detective?.indicators||[]),
+    ...(payload?.detective?.indicator_evidence||[]).flatMap(item=>[item?.label,item?.excerpt]),
+    ...(payload?.deterministic_findings||[]).flatMap(item=>[item?.kind,item?.excerpt])
+  ].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  return {
+    link:/(https?:\/\/|www\.|bit\.ly|tinyurl|t\.co|shorturl|lien ket|\blink\b|\burl\b|ma qr|\bqr\b|bam vao|nhan vao|scan\b|quet\b)/.test(signalText),
+    money:/(chuyen (?:khoan|tien)|thanh toan|dong phi|nop phi|\b\d[\d.\s]{2,}\s*(?:dong|vnd|usd|usdt)\b)/.test(signalText),
+    credentials:/(otp|mat khau|password|cccd|cvv|so the|dang nhap|xac minh|cung cap thong tin|chia se thong tin)/.test(signalText),
+    remote:/(anydesk|teamviewer|ultraviewer|chia se man hinh|dieu khien tu xa)/.test(signalText)
+  };
+}
+
+function renderPsychology(originalText,payload){
   const riskLevel=payload?.detective?.risk_level;
   const shouldShow=riskLevel==='suspicious'||riskLevel==='dangerous';
+  const exposures=responderExposureFlags(originalText,payload);
+  const shouldOfferResponder=exposures.link||exposures.money||exposures.credentials||exposures.remote;
   psychologyMessage.replaceChildren();
   postAnalysisQuestion.hidden=true;
   bankQuestion.hidden=true;
   bankOptions.replaceChildren();
-  postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id));
+  postAnalysisQuestion.dataset.eligible=String(Boolean(shouldShow&&!payload.offline&&payload.id&&shouldOfferResponder));
   postAnalysisQuestion.dataset.analysisId=String(payload.id||'');
   postAnalysisQuestion.dataset.riskLevel=riskLevel||'suspicious';
   responderBlock.hidden=true;
   responderSteps.replaceChildren();
   postAnalysisOptions.forEach(option=>{
     option.disabled=false;
+    option.hidden=option.dataset.postAnalysisChoice==='opened-link'&&!exposures.link
+      ||option.dataset.postAnalysisChoice==='sent-money'&&!exposures.money
+      ||option.dataset.postAnalysisChoice==='shared-info'&&!(exposures.link||exposures.credentials||exposures.remote);
     option.classList.remove('selected');
     option.setAttribute('aria-pressed','false');
   });
@@ -1116,7 +1139,7 @@ function showResultFrame(text,payload,{fromHistory=false}={}){
     :risk.description;
 
   renderSignals(detective,payload.deterministic_findings,text);
-  renderPsychology(payload);
+  renderPsychology(text,payload);
   if(Array.isArray(payload.responder_output?.steps)&&!payload.responder_output.needs_bank){
     renderResponderGuidance(payload.responder_output.steps);
   }
