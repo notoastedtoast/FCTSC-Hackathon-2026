@@ -301,12 +301,6 @@ function drawQr(context,x,y,pixelSize,value){
   });
 }
 
-function resultShareUrl(id){
-  return /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(id||''))
-    ?new URL(`#result/${id}`,SHARE_PRODUCT_URL).href
-    :SHARE_PRODUCT_URL;
-}
-
 function resultShareSummary(originalText,payload){
   const detective=payload?.detective||{};
   const riskLevel=detective.risk_level||'suspicious';
@@ -359,7 +353,7 @@ function resultShareSummary(originalText,payload){
     actions:defaultActions.map((fallback,index)=>
       normalizeShareText(detective.actions?.[index]||fallback)
     ),
-    resultUrl:resultShareUrl(payload?.id)
+    resultUrl:new URL('/#analyze',SHARE_PRODUCT_URL).href
   };
 }
 
