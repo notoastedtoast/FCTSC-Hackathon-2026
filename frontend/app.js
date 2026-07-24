@@ -3,6 +3,7 @@
    app-render.js. This file keeps the routing, API calls, and event wiring. */
 
 
+// --- Accessibility and display preferences --------------------------------------
 function readDisplayPreferences(){
   try{
     const saved=JSON.parse(localStorage.getItem(DISPLAY_PREFERENCES_KEY)||'{}');
@@ -58,6 +59,7 @@ window.addEventListener('storage',event=>{
   applyDisplayPreferences(displayPreferences);
 });
 
+// --- Remaining-analysis counter --------------------------------------------------
 function renderRemainingAnalyses(){
   usage.textContent=`Số lượt phân tích còn lại: ${remainingAnalyses} lần`;
 }
@@ -92,6 +94,7 @@ function decrementRemainingAnalyses(){
   renderRemainingAnalyses();
 }
 
+// --- Layout helpers and hash routing --------------------------------------------
 // Move quick sample cards below the main submit button on small screens.
 function syncQuickInputLayout(){
   if(mobileLayoutQuery.matches){
@@ -158,6 +161,7 @@ function switchView(view,{focus=false}={}){
   updateResultScrollButton();
 }
 
+// --- Result-page auto-follow / scrolling ----------------------------------------
 function resultViewIsVisible(){
   const view=resultFrame.closest('[data-view-panel]');
   return resultFrame.classList.contains('active')&&!view?.hidden;
@@ -263,6 +267,7 @@ function hideProcessingFrame(){
   processingFrame.setAttribute('aria-busy','false');
 }
 
+// --- Composer input, draft, and voice controls ----------------------------------
 function showFeedback(message,type='error'){feedback.textContent=message;feedback.className=`feedback ${type}`}
 function hideFeedback(){feedback.textContent='';feedback.className='feedback'}
 function saveDraft(){
@@ -283,6 +288,7 @@ function restoreDraft(){
 }
 function updateInputState(){const rawLength=messageInput.value.length,clean=normalizedValue();characterCount.textContent=`${rawLength} / ${MAX_LENGTH}`;checkButton.disabled=isAnalyzing||(!isOffline&&sessionAtLimit)||clean.length<MIN_LENGTH;if(rawLength===0){hideFeedback();messageInput.removeAttribute('aria-invalid')}else if(clean.length===0){showFeedback('Nội dung không thể chỉ gồm khoảng trắng.');messageInput.setAttribute('aria-invalid','true')}else if(clean.length<MIN_LENGTH){showFeedback(`Nội dung còn quá ngắn. Vui lòng nhập ít nhất ${MIN_LENGTH} ký tự.`);messageInput.setAttribute('aria-invalid','true')}else{hideFeedback();messageInput.removeAttribute('aria-invalid')}}
 function setupSpeechRecognition(){const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Bạn vẫn có thể nhập hoặc dán nội dung.';return}recognition=new SpeechRecognition();recognition.lang='vi-VN';recognition.interimResults=true;recognition.continuous=true;let finalTranscript='';recognition.onstart=()=>{isRecording=true;finalTranscript='';voiceButton.classList.add('recording');voiceButton.setAttribute('aria-pressed','true');voiceButton.title='Tắt micro';voiceButtonLabel.textContent='Tắt micro';voiceStatus.textContent='Đang ghi âm… Hãy đọc rõ nội dung tin nhắn.'};recognition.onresult=(event)=>{let interimTranscript='';for(let i=event.resultIndex;i<event.results.length;i++){const transcript=event.results[i][0].transcript;if(event.results[i].isFinal)finalTranscript+=transcript+' ';else interimTranscript+=transcript}const combined=`${finalTranscript}${interimTranscript}`.trim();if(combined){const base=messageInput.dataset.beforeVoice||'';messageInput.value=base?`${base} ${combined}`:combined;messageInput.dispatchEvent(new Event('input'))}};recognition.onerror=(event)=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(event.error==='not-allowed'||event.error==='service-not-allowed')voiceStatus.textContent='Không thể dùng micro vì quyền truy cập đã bị từ chối. Bạn vẫn có thể nhập nội dung bằng bàn phím.';else if(event.error==='no-speech')voiceStatus.textContent='Chưa nhận được giọng nói. Vui lòng thử lại và nói gần micro hơn.';else voiceStatus.textContent='Tính năng giọng nói tạm thời chưa hoạt động. Vui lòng nhập nội dung thủ công.'};recognition.onend=()=>{isRecording=false;voiceButton.classList.remove('recording');voiceButton.setAttribute('aria-pressed','false');voiceButton.title='Bật micro';voiceButtonLabel.textContent='Bật micro';if(!voiceStatus.textContent.includes('từ chối')&&!voiceStatus.textContent.includes('tạm thời')&&!voiceStatus.textContent.includes('Chưa nhận'))voiceStatus.textContent='Đã dừng ghi âm.';delete messageInput.dataset.beforeVoice}}
+// --- History storage and merge logic --------------------------------------------
 function getHistory(){
   return historyCache;
 }
@@ -427,6 +433,8 @@ function saveOfflineHistory(message,result){
   return entry;
 }
 
+// Pull online history from the backend when possible, then merge it with
+// browser-kept entries so revisits still show previous results.
 async function loadHistory(){
   historyList.replaceChildren();
   const loading=document.createElement('p');
@@ -641,6 +649,7 @@ async function confirmDeleteSelectedHistory(){
   }
 }
 
+// --- API adapter and online result preparation ----------------------------------
 function apiErrorMessage(statusCode,detail){
   if(statusCode===409)return 'Yêu cầu này vẫn đang được xử lý. Bác vui lòng thử lại sau ít phút.';
   if(statusCode===429)return 'Phiên này đã dùng hết lượt kiểm tra AI. Bác vui lòng xem lại các kết quả đã lưu.';
@@ -702,6 +711,8 @@ async function loadUsageCompat(){
   renderRemainingAnalyses();
 }
 
+// Convert the older backend shape into the richer payload that the current
+// frontend renderer expects, then cache it for history/result review.
 async function prepareOnlineResult(submittedText,analysisResult){
   const needsGuide=['medium','high'].includes(analysisResult?.risk_level);
   let entries=[];
@@ -750,6 +761,7 @@ async function prepareOnlineResult(submittedText,analysisResult){
   }).result;
 }
 
+// --- Connectivity and service worker --------------------------------------------
 function applyUsage(aiUsage){
   const used=Number(aiUsage?.used||0);
   const limit=Number(aiUsage?.limit||0);
@@ -786,6 +798,7 @@ function setPracticeAnswersDisabled(disabled){
   practiceAnswerButtons.forEach(button=>{button.disabled=disabled});
 }
 
+// --- Practice page --------------------------------------------------------------
 function shuffledPracticePrompts(){
   const prompts=[...practicePrompts];
   for(let index=prompts.length-1;index>0;index-=1){
@@ -845,6 +858,7 @@ function submitPracticeAnswer(answer,selectedButton){
   practiceNextButton.focus();
 }
 
+// --- Analysis submission flow ---------------------------------------------------
 messageInput.addEventListener('input',()=>{saveDraft();updateInputState()});
 sampleButtons.forEach(button=>button.addEventListener('click',()=>{messageInput.value=samples[button.dataset.sample];messageInput.focus();messageInput.dispatchEvent(new Event('input'))}));
 voiceButton.addEventListener('click',()=>{if(!recognition)return;try{if(isRecording)recognition.stop();else{messageInput.dataset.beforeVoice=messageInput.value.trim();recognition.start()}}catch(error){voiceStatus.textContent='Không thể khởi động micro lúc này. Vui lòng thử lại sau.'}});
@@ -990,6 +1004,8 @@ function pendingAnalysisFor(message){
   return pending;
 }
 
+// Central check flow: choose offline or online analysis, save the result,
+// then open the result page.
 async function runAnalysis(submittedText){
   if(isAnalyzing)return;
   isAnalyzing=true;
@@ -1060,6 +1076,7 @@ async function runAnalysis(submittedText){
   }
 }
 
+// --- Scam library and hotline browser -------------------------------------------
 function createLibraryIcon(group,className=''){
   const details=scamGroupDetails[group]||scamGroupDetails.fake_bank;
   const wrapper=document.createElement('span');
@@ -1219,6 +1236,7 @@ function syncLibraryRoute(){
   else showLibraryList();
 }
 
+// --- Route syncing and global event wiring --------------------------------------
 async function showResultRoute(resultId){
   try{
     const savedItem=readSavedHistoryItem(resultId);

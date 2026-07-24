@@ -1,5 +1,6 @@
 /* ScamCheck browser rendering helpers.
    This file only handles presentation and result rendering. */
+// --- Risk labels and descriptions shown in the result header ---------------------
 const riskPresentations={
   safe:{
     className:'safe',
@@ -18,6 +19,7 @@ const riskPresentations={
   }
 };
 
+// --- QR code generator used by the share-image feature ---------------------------
 function qrAppendBits(value,length,bits){
   for(let shift=length-1;shift>=0;shift--)bits.push((value>>>shift)&1);
 }
@@ -140,6 +142,7 @@ function createQrMatrix(value=SHARE_PRODUCT_URL){
   return modules;
 }
 
+// --- Canvas drawing helpers -----------------------------------------------------
 function drawRoundedRectangle(context,x,y,width,height,radius,fill,stroke=null,lineWidth=1){
   const safeRadius=Math.min(radius,width/2,height/2);
   context.beginPath();
@@ -218,6 +221,7 @@ function drawPreparedCanvasLines(context,lines,x,y,lineHeight){
   lines.forEach((line,index)=>context.fillText(line,x,y+index*lineHeight));
 }
 
+// --- Share-image asset loading and summary shaping -------------------------------
 function drawCanvasLines(context,value,x,y,maxWidth,lineHeight,maxLines){
   const lines=fitCanvasLines(context,value,maxWidth,maxLines);
   drawPreparedCanvasLines(context,lines,x,y,lineHeight);
@@ -359,6 +363,8 @@ function resultShareSummary(originalText,payload){
   };
 }
 
+// Build the exported summary image shown when the user taps
+// "Tải kết quả dạng ảnh".
 async function createResultShareCanvas(summary){
   await waitForShareCanvasFonts();
   const canvas=document.createElement('canvas');
@@ -578,6 +584,7 @@ async function createResultShareCanvas(summary){
   return canvas;
 }
 
+// --- DOM capture helpers for result export --------------------------------------
 function createCaptureQrCanvas(value){
   const canvas=document.createElement('canvas');
   canvas.width=90;
@@ -731,6 +738,7 @@ async function saveCurrentResultImage(){
   return isAppleMobile?'preview':'downloaded';
 }
 
+// --- Safe text rendering for result messages ------------------------------------
 function appendHighlightedText(container,text,quotes){
   container.replaceChildren();
   const ranges=[];
@@ -769,6 +777,7 @@ function appendHighlightedText(container,text,quotes){
   if(merged.length===0)container.textContent=text;
 }
 
+// --- Detective / Psychology / Responder result blocks ----------------------------
 function appendSignalCard(titleText,explanationText,quoteText=null,badgeText=null){
   const messageOrder=signalList.childElementCount;
   const row=document.createElement('div');
@@ -1064,6 +1073,7 @@ function renderResponderGuidance(steps){
   revealRows(items);
 }
 
+// Main renderer for the result page after online or offline analysis finishes.
 function showResultFrame(text,payload,{fromHistory=false}={}){
   const detective=payload.detective;
   const risk=riskPresentations[detective.risk_level]||riskPresentations.suspicious;
